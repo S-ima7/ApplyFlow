@@ -1,0 +1,345 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ApplicationType {
+  JOB_HUNTING
+  CAREER_CHANGE
+  INTERNSHIP
+  FREELANCE
+  PART_TIME
+  GRADUATE_SCHOOL
+  OTHER
+}
+
+enum ApplicationRoute {
+  DIRECT
+  AGENT
+  REFERRAL
+  JOB_BOARD
+  SCOUT
+  SNS
+  OTHER
+}
+
+enum ApplicationStatus {
+  DRAFT
+  APPLIED
+  DOCUMENT_SCREENING
+  INTERVIEWING
+  OFFERED
+  ACCEPTED
+  DECLINED
+  REJECTED
+  WITHDRAWN
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  TOP
+}
+
+enum StageType {
+  DOCUMENT_SCREENING
+  CASUAL_MEETING
+  FIRST_INTERVIEW
+  SECOND_INTERVIEW
+  FINAL_INTERVIEW
+  OFFER_MEETING
+  CONDITION_MEETING
+  ASSIGNMENT
+  OTHER
+}
+
+enum StageStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  WAITING_REPLY
+  SCHEDULED
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+enum InterviewStatus {
+  DRAFT
+  PROPOSED
+  WAITING_REPLY
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum ProposedSlotStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum DeadlineType {
+  REPLY_DEADLINE
+  OFFER_ACCEPTANCE
+  DOCUMENT_SUBMISSION
+  ASSIGNMENT_SUBMISSION
+  INTERVIEW_PREPARATION
+  OTHER
+}
+
+enum DeadlineStatus {
+  OPEN
+  DONE
+  EXPIRED
+  CANCELLED
+}
+
+enum ActivityAction {
+  APPLICATION_CREATED
+  APPLICATION_UPDATED
+  APPLICATION_STATUS_CHANGED
+  STAGE_CREATED
+  STAGE_STATUS_CHANGED
+  INTERVIEW_CREATED
+  INTERVIEW_STATUS_CHANGED
+  PROPOSED_SLOT_CREATED
+  PROPOSED_SLOT_CONFIRMED
+  PROPOSED_SLOT_CANCELLED
+  DEADLINE_CREATED
+  DEADLINE_COMPLETED
+  APPLICATION_WITHDRAWN
+  APPLICATION_REJECTED
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  timezone      String    @default("Asia/Tokyo")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+
+  companies     Company[]
+  applications  Application[]
+  stages        SelectionStage[]
+  interviews    Interview[]
+  proposedSlots ProposedSlot[]
+  deadlines     Deadline[]
+  activityLogs  ActivityLog[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Company {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  websiteUrl String?
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([userId])
+  @@index([userId, name])
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  userId          String
+  companyId       String
+  position        String
+  applicationType ApplicationType
+  route           ApplicationRoute
+  status          ApplicationStatus @default(DRAFT)
+  priority        Priority          @default(MEDIUM)
+  appliedAt       DateTime?
+  sourceUrl       String?
+  note            String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  stages       SelectionStage[]
+  deadlines    Deadline[]
+  activityLogs ActivityLog[]
+
+  @@index([userId, status])
+  @@index([userId, priority])
+  @@index([companyId])
+  @@index([deletedAt])
+}
+
+model SelectionStage {
+  id            String      @id @default(cuid())
+  userId        String
+  applicationId String
+  type          StageType
+  name          String?
+  status        StageStatus @default(NOT_STARTED)
+  order         Int
+  scheduledAt   DateTime?
+  completedAt   DateTime?
+  note          String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  interviews Interview[]
+
+  @@index([userId, status])
+  @@index([applicationId, order])
+  @@index([deletedAt])
+}
+
+model Interview {
+  id               String          @id @default(cuid())
+  userId           String
+  selectionStageId String
+  status           InterviewStatus @default(DRAFT)
+  title            String?
+  meetingUrl       String?
+  location         String?
+  interviewerName  String?
+  interviewerEmail String?
+  confirmedStartAt DateTime?
+  confirmedEndAt   DateTime?
+  note             String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectionStage SelectionStage @relation(fields: [selectionStageId], references: [id], onDelete: Cascade)
+
+  proposedSlots ProposedSlot[]
+
+  @@index([userId, status])
+  @@index([selectionStageId])
+  @@index([userId, confirmedStartAt])
+  @@index([deletedAt])
+}
+
+model ProposedSlot {
+  id          String             @id @default(cuid())
+  userId      String
+  interviewId String
+  startAt     DateTime
+  endAt       DateTime
+  timezone    String             @default("Asia/Tokyo")
+  status      ProposedSlotStatus @default(PENDING)
+  source      String?
+  note        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  deletedAt   DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startAt])
+  @@index([userId, endAt])
+  @@index([interviewId, status])
+  @@index([userId, status, startAt])
+  @@index([deletedAt])
+}
+
+model Deadline {
+  id            String         @id @default(cuid())
+  userId        String
+  applicationId String
+  type          DeadlineType
+  status        DeadlineStatus @default(OPEN)
+  title         String
+  dueAt         DateTime
+  completedAt   DateTime?
+  note          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dueAt])
+  @@index([userId, status, dueAt])
+  @@index([applicationId])
+  @@index([deletedAt])
+}
+
+model ActivityLog {
+  id            String         @id @default(cuid())
+  userId        String
+  applicationId String
+  action        ActivityAction
+  message       String
+  metadata      Json?
+  createdAt     DateTime       @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([applicationId, createdAt])
+}
