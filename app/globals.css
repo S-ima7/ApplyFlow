@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f8fb;
+  --foreground: #152033;
+  --card: #ffffff;
+  --card-foreground: #152033;
+  --muted: #eef1f6;
+  --muted-foreground: #667085;
+  --border: #d9dee8;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+  --success: #16a34a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    Arial,
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    Meiryo,
+    sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.fc {
+  --fc-border-color: #d9dee8;
+  --fc-page-bg-color: #ffffff;
+  --fc-today-bg-color: #eff6ff;
+  --fc-event-border-color: transparent;
+  --fc-event-bg-color: #2563eb;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.fc .fc-button {
+  border-radius: 6px;
+  border: 1px solid #cfd6e3;
+  background: #ffffff;
+  color: #152033;
+  box-shadow: none;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.fc .applyflow-event-confirmed {
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  color: #ffffff;
+}
+
+.fc .applyflow-event-proposed {
+  background: #eff6ff;
+  border: 1px dashed #60a5fa;
+  color: #1e3a8a;
+}
+
+.fc .applyflow-event-deadline {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+}
+
+.fc .applyflow-event-offer-deadline {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #991b1b;
+}
