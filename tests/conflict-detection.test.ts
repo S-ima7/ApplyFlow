@@ -11,12 +11,15 @@ function item(
   start: string,
   end: string,
   status: "pending" | "confirmed" = "pending",
-  eventGroupId?: string
+  eventGroupId?: string,
+  kind: ScheduleItem["kind"] = status === "confirmed"
+    ? "confirmed_interview"
+    : "proposed_slot"
 ): ScheduleItem {
   return {
     id,
     eventGroupId,
-    kind: status === "confirmed" ? "confirmed_interview" : "proposed_slot",
+    kind,
     status,
     startAt: new Date(start),
     endAt: new Date(end),
@@ -99,5 +102,44 @@ describe("detectConflicts", () => {
     ]);
 
     expect(conflicts).toHaveLength(0);
+  });
+
+  it("detects proposed slot conflicts with Google Calendar events as medium", () => {
+    const conflicts = detectConflicts([
+      item("slot:1", "2026-07-12T10:00:00.000Z", "2026-07-12T11:00:00.000Z"),
+      item(
+        "google:primary:1",
+        "2026-07-12T10:30:00.000Z",
+        "2026-07-12T11:30:00.000Z",
+        "confirmed",
+        undefined,
+        "google_calendar_event"
+      )
+    ]);
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.severity).toBe("medium");
+  });
+
+  it("detects confirmed interview conflicts with Google Calendar events as high", () => {
+    const conflicts = detectConflicts([
+      item(
+        "interview:1",
+        "2026-07-12T10:00:00.000Z",
+        "2026-07-12T11:00:00.000Z",
+        "confirmed"
+      ),
+      item(
+        "google:primary:1",
+        "2026-07-12T10:30:00.000Z",
+        "2026-07-12T11:30:00.000Z",
+        "confirmed",
+        undefined,
+        "google_calendar_event"
+      )
+    ]);
+
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.severity).toBe("high");
   });
 });
