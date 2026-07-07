@@ -31,7 +31,7 @@ export default async function CalendarPage() {
             {conflicts.slice(0, 4).map((conflict) => (
               <Link
                 key={conflict.id}
-                href={`/applications/${conflict.itemA.applicationId}`}
+                href={getConflictHref(conflict)}
                 className="rounded-md border border-amber-200 bg-white p-3 text-sm"
               >
                 <div className="flex items-center justify-between gap-3">
@@ -65,4 +65,9 @@ export default async function CalendarPage() {
       </Card>
     </div>
   );
+}
+
+function getConflictHref(conflict: Awaited<ReturnType<typeof getConflictAlertsForUser>>[number]) {
+  const applicationId = conflict.itemA.applicationId ?? conflict.itemB.applicationId;
+  return applicationId ? `/applications/${applicationId}` : "/calendar";
 }

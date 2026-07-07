@@ -191,7 +191,7 @@ export default async function DashboardPage() {
             {conflicts.slice(0, 8).map((conflict) => (
               <Link
                 key={conflict.id}
-                href={`/applications/${conflict.itemA.applicationId}`}
+                href={getConflictHref(conflict)}
                 className="block rounded-md border border-amber-200 bg-amber-50 p-3 text-sm"
               >
                 <div className="mb-2 flex items-center justify-between">
@@ -220,4 +220,9 @@ export default async function DashboardPage() {
       </div>
     </div>
   );
+}
+
+function getConflictHref(conflict: Awaited<ReturnType<typeof getConflictAlertsForUser>>[number]) {
+  const applicationId = conflict.itemA.applicationId ?? conflict.itemB.applicationId;
+  return applicationId ? `/applications/${applicationId}` : "/calendar";
 }

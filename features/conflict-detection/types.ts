@@ -1,4 +1,7 @@
-export type ScheduleItemKind = "proposed_slot" | "confirmed_interview";
+export type ScheduleItemKind =
+  | "proposed_slot"
+  | "confirmed_interview"
+  | "google_calendar_event";
 export type ScheduleItemStatus = "pending" | "confirmed";
 export type ConflictSeverity = "low" | "medium" | "high";
 
@@ -12,7 +15,7 @@ export type ScheduleItem = {
   title: string;
   companyName: string;
   position: string;
-  applicationId: string;
+  applicationId?: string;
 };
 
 export type ConflictAlert = {

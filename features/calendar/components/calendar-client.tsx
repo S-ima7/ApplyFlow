@@ -41,7 +41,13 @@ export function CalendarClient({ events }: { events: CalendarEvent[] }) {
 function renderEventContent(arg: EventContentArg) {
   const kind = arg.event.extendedProps.kind as string;
   const label =
-    kind === "confirmed_interview" ? "確定" : kind === "proposed_slot" ? "候補" : "期限";
+    kind === "confirmed_interview"
+      ? "確定"
+      : kind === "proposed_slot"
+        ? "候補"
+        : kind === "google_calendar"
+          ? "Google"
+          : "期限";
 
   return (
     <div className="overflow-hidden px-1 py-0.5">

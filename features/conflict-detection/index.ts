@@ -39,6 +39,13 @@ export function detectConflicts(
         continue;
       }
 
+      if (
+        itemA.kind === "google_calendar_event" &&
+        itemB.kind === "google_calendar_event"
+      ) {
+        continue;
+      }
+
       if (!target && itemA.id > itemB.id) {
         continue;
       }

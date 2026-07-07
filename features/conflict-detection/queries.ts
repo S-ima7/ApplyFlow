@@ -1,10 +1,15 @@
 import { InterviewStatus, ProposedSlotStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { detectConflicts } from "@/features/conflict-detection";
+import { googleCalendarEventsToScheduleItems } from "@/features/conflict-detection/google-calendar";
 import type { ConflictAlert, ScheduleItem } from "@/features/conflict-detection/types";
+import { getGoogleCalendarEvents, type GoogleCalendarRange } from "@/lib/google-calendar";
 
-export async function getScheduleItemsForConflict(userId: string): Promise<ScheduleItem[]> {
-  const [slots, interviews] = await Promise.all([
+export async function getScheduleItemsForConflict(
+  userId: string,
+  googleRange?: GoogleCalendarRange
+): Promise<ScheduleItem[]> {
+  const [slots, interviews, googleCalendar] = await Promise.all([
     prisma.proposedSlot.findMany({
       where: {
         userId,
@@ -67,7 +72,8 @@ export async function getScheduleItemsForConflict(userId: string): Promise<Sched
           }
         }
       }
-    })
+    }),
+    getGoogleCalendarEvents(userId, googleRange)
   ]);
 
   const slotItems: ScheduleItem[] = slots.map((slot) => {
@@ -106,7 +112,9 @@ export async function getScheduleItemsForConflict(userId: string): Promise<Sched
       };
     });
 
-  return [...slotItems, ...interviewItems];
+  const googleItems = googleCalendarEventsToScheduleItems(googleCalendar.events);
+
+  return [...slotItems, ...interviewItems, ...googleItems];
 }
 
 export async function getConflictAlertsForUser(userId: string): Promise<ConflictAlert[]> {
@@ -118,6 +126,9 @@ export async function getConflictAlertsForTarget(
   userId: string,
   target: ScheduleItem
 ): Promise<ConflictAlert[]> {
-  const items = await getScheduleItemsForConflict(userId);
+  const items = await getScheduleItemsForConflict(userId, {
+    timeMin: target.startAt,
+    timeMax: target.endAt
+  });
   return detectConflicts(items, target);
 }

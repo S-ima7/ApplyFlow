@@ -1,4 +1,5 @@
 import { DeadlineStatus, InterviewStatus, ProposedSlotStatus } from "@prisma/client";
+import { getGoogleCalendarEvents } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
 
 export type CalendarEvent = {
@@ -9,16 +10,18 @@ export type CalendarEvent = {
   allDay?: boolean;
   className?: string;
   extendedProps: {
-    kind: "confirmed_interview" | "proposed_slot" | "deadline";
-    applicationId: string;
+    kind: "confirmed_interview" | "proposed_slot" | "deadline" | "google_calendar";
+    applicationId?: string;
     companyName: string;
     position: string;
     status: string;
+    externalUrl?: string;
+    calendarId?: string;
   };
 };
 
 export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]> {
-  const [interviews, slots, deadlines] = await Promise.all([
+  const [interviews, slots, deadlines, googleCalendar] = await Promise.all([
     prisma.interview.findMany({
       where: {
         userId,
@@ -94,7 +97,8 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
           }
         }
       }
-    })
+    }),
+    getGoogleCalendarEvents(userId)
   ]);
 
   return [
@@ -150,6 +154,29 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
         companyName: deadline.application.company.name,
         position: deadline.application.position,
         status: deadline.status
+      }
+    })),
+    ...googleCalendar.events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      start: event.allDay
+        ? event.startDate ?? event.startAt.toISOString()
+        : event.startAt.toISOString(),
+      end: event.allDay
+        ? event.endDate ?? event.endAt.toISOString()
+        : event.endAt.toISOString(),
+      allDay: event.allDay,
+      className:
+        event.transparency === "transparent"
+          ? "applyflow-event-google-transparent"
+          : "applyflow-event-google",
+      extendedProps: {
+        kind: "google_calendar" as const,
+        companyName: "Google Calendar",
+        position: event.calendarId,
+        status: event.transparency,
+        externalUrl: event.htmlLink,
+        calendarId: event.calendarId
       }
     }))
   ];
