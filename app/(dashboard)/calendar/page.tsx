@@ -17,9 +17,9 @@ export default async function CalendarPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-950">Calendar</h2>
+        <h2 className="text-2xl font-bold text-slate-950">カレンダー</h2>
         <p className="text-sm text-slate-500">
-          確定面談、提示中候補日時、返信期限、承諾期限を時間軸で確認します。
+          選考予定とGoogle Calendarを重ねて確認し、必要な予定を取り込めます。
         </p>
       </div>
       {calendarData.googleCalendar.status !== "connected" ? (
@@ -89,11 +89,32 @@ export default async function CalendarPage() {
         </Card>
       ) : null}
       <Card>
-        <CardContent className="p-4">
-          <CalendarClient events={calendarData.events} />
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-600">
+            <Legend className="bg-blue-600" label="確定面談" />
+            <Legend className="border border-dashed border-blue-400 bg-blue-50" label="候補日時" />
+            <Legend className="bg-violet-600" label="取込済み" />
+            <Legend className="bg-slate-300" label="Google予定" />
+            <Legend className="bg-amber-400" label="期限" />
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 pt-0 sm:p-4 sm:pt-0">
+          <CalendarClient
+            events={calendarData.events}
+            applicationOptions={calendarData.applicationOptions}
+          />
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function Legend({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-2.5 w-2.5 rounded-sm ${className}`} aria-hidden="true" />
+      {label}
+    </span>
   );
 }
 

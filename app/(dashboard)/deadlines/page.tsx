@@ -14,7 +14,7 @@ export default async function DeadlinesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-slate-950">Deadlines</h2>
+        <h2 className="text-2xl font-bold text-slate-950">期限管理</h2>
         <p className="text-sm text-slate-500">返信期限、承諾期限、提出期限を一元管理します。</p>
       </div>
       <Card>
@@ -25,7 +25,39 @@ export default async function DeadlinesPage() {
           {deadlines.length === 0 ? (
             <p className="text-sm text-slate-500">期限はまだありません。</p>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <div className="space-y-3 md:hidden">
+                {deadlines.map((deadline) => (
+                  <div key={deadline.id} className="rounded-lg border border-slate-200 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-slate-950">{deadline.title}</p>
+                        <Link
+                          href={`/applications/${deadline.applicationId}`}
+                          className="mt-1 block text-sm text-blue-700"
+                        >
+                          {deadline.application.company.name} / {deadline.application.position}
+                        </Link>
+                      </div>
+                      <Badge variant={deadline.status === "DONE" ? "success" : "warning"}>
+                        {deadlineStatusLabels[deadline.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-4 flex items-end justify-between gap-3">
+                      <div className="text-sm">
+                        <p className="font-medium">{formatDateTime(deadline.dueAt)}</p>
+                        <p className="text-xs text-slate-500">
+                          {deadlineTypeLabels[deadline.type]}・{daysUntil(deadline.dueAt)}
+                        </p>
+                      </div>
+                      {deadline.status === "OPEN" ? (
+                        <CompleteDeadlineButton deadlineId={deadline.id} />
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -68,7 +100,8 @@ export default async function DeadlinesPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
