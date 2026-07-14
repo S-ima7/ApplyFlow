@@ -1,15 +1,20 @@
-import type { Account } from "@prisma/client";
 import { DEFAULT_TIMEZONE } from "@/lib/date";
-import { prisma } from "@/lib/prisma";
+import {
+  GOOGLE_BASE_AUTH_SCOPES,
+  GOOGLE_GMAIL_READONLY_SCOPE,
+  getGoogleAccount,
+  getValidGoogleAccessToken,
+  hasGoogleScope,
+  isGoogleAccessTokenExpired
+} from "@/lib/google-auth";
 
 export const GOOGLE_CALENDAR_READONLY_SCOPE =
   "https://www.googleapis.com/auth/calendar.readonly";
 
 export const GOOGLE_AUTH_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  GOOGLE_CALENDAR_READONLY_SCOPE
+  ...GOOGLE_BASE_AUTH_SCOPES,
+  GOOGLE_CALENDAR_READONLY_SCOPE,
+  GOOGLE_GMAIL_READONLY_SCOPE
 ].join(" ");
 
 export type GoogleCalendarConnectionStatus =
@@ -67,26 +72,14 @@ type GoogleCalendarApiEventDate = {
 
 type GoogleCalendarApiEventsResponse = {
   items?: GoogleCalendarApiEvent[];
+  nextPageToken?: string;
   error?: {
     message?: string;
   };
 };
 
-type GoogleTokenResponse = {
-  access_token?: string;
-  expires_in?: number;
-  refresh_token?: string;
-  scope?: string;
-  token_type?: string;
-  error?: string;
-  error_description?: string;
-};
-
 export function hasGoogleCalendarReadonlyScope(scope?: string | null) {
-  return (scope ?? "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .includes(GOOGLE_CALENDAR_READONLY_SCOPE);
+  return hasGoogleScope(scope, GOOGLE_CALENDAR_READONLY_SCOPE);
 }
 
 export function getDefaultGoogleCalendarRange(now = new Date()): GoogleCalendarRange {
@@ -124,7 +117,7 @@ export async function getGoogleCalendarConnectionStatus(
     };
   }
 
-  if (isAccessTokenExpired(account) && !account.refresh_token) {
+  if (isGoogleAccessTokenExpired(account) && !account.refresh_token) {
     return {
       status: "missing_token",
       scope: account.scope,
@@ -161,7 +154,7 @@ export async function getGoogleCalendarEvents(
     };
   }
 
-  const accessToken = await getValidAccessToken(account);
+  const accessToken = await getValidGoogleAccessToken(account);
 
   if (!accessToken) {
     return {
@@ -173,23 +166,30 @@ export async function getGoogleCalendarEvents(
   }
 
   try {
-    const response = await fetchGoogleCalendarEvents(accessToken, range);
+    const apiEvents: GoogleCalendarApiEvent[] = [];
+    let pageToken: string | undefined;
 
-    if (!response.ok) {
-      return {
-        status: "error",
-        scope: account.scope,
-        events: [],
-        message: "Google Calendar予定を取得できませんでした"
-      };
-    }
+    do {
+      const response = await fetchGoogleCalendarEvents(accessToken, range, pageToken);
+      const data = (await response.json()) as GoogleCalendarApiEventsResponse;
 
-    const data = (await response.json()) as GoogleCalendarApiEventsResponse;
+      if (!response.ok) {
+        return {
+          status: "error",
+          scope: account.scope,
+          events: [],
+          message: getGoogleCalendarApiErrorMessage(response.status, data)
+        };
+      }
+
+      apiEvents.push(...(data.items ?? []));
+      pageToken = data.nextPageToken;
+    } while (pageToken);
 
     return {
       status: "connected",
       scope: account.scope,
-      events: mapGoogleCalendarEvents(data.items ?? [])
+      events: mapGoogleCalendarEvents(apiEvents)
     };
   } catch {
     return {
@@ -243,92 +243,59 @@ export function mapGoogleCalendarEvent(
   };
 }
 
-async function getGoogleAccount(userId: string) {
-  return prisma.account.findFirst({
-    where: {
-      userId,
-      provider: "google"
-    }
-  });
-}
-
-function isAccessTokenExpired(account: Account) {
-  if (!account.expires_at) {
-    return false;
-  }
-
-  const nowWithBuffer = Math.floor(Date.now() / 1000) + 60;
-  return account.expires_at <= nowWithBuffer;
-}
-
-async function getValidAccessToken(account: Account) {
-  if (account.access_token && !isAccessTokenExpired(account)) {
-    return account.access_token;
-  }
-
-  if (!account.refresh_token) {
-    return account.access_token;
-  }
-
-  return refreshAccessToken(account);
-}
-
-async function refreshAccessToken(account: Account) {
-  const clientId = process.env.AUTH_GOOGLE_ID;
-  const clientSecret = process.env.AUTH_GOOGLE_SECRET;
-
-  if (!clientId || !clientSecret || !account.refresh_token) {
-    return null;
-  }
-
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "refresh_token",
-      refresh_token: account.refresh_token
-    })
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = (await response.json()) as GoogleTokenResponse;
-
-  if (!data.access_token) {
-    return null;
-  }
-
-  await prisma.account.update({
-    where: {
-      id: account.id
-    },
-    data: {
-      access_token: data.access_token,
-      expires_at: data.expires_in
-        ? Math.floor(Date.now() / 1000) + data.expires_in
-        : account.expires_at,
-      refresh_token: data.refresh_token ?? account.refresh_token,
-      scope: data.scope ?? account.scope,
-      token_type: data.token_type ?? account.token_type
-    }
-  });
-
-  return data.access_token;
-}
-
-function fetchGoogleCalendarEvents(accessToken: string, range: GoogleCalendarRange) {
+export function buildGoogleCalendarEventsUrl(
+  range: GoogleCalendarRange,
+  pageToken?: string
+) {
   const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
   url.searchParams.set("timeMin", range.timeMin.toISOString());
   url.searchParams.set("timeMax", range.timeMax.toISOString());
   url.searchParams.set("singleEvents", "true");
   url.searchParams.set("orderBy", "startTime");
   url.searchParams.set("showDeleted", "false");
+  url.searchParams.set("maxResults", "2500");
+
+  if (pageToken) {
+    url.searchParams.set("pageToken", pageToken);
+  }
+
+  return url;
+}
+
+export function getGoogleCalendarApiErrorMessage(
+  status: number,
+  data: GoogleCalendarApiEventsResponse
+) {
+  const apiMessage = data.error?.message ?? "";
+
+  if (
+    status === 403 &&
+    /calendar api has not been used|calendar api.*disabled/i.test(apiMessage)
+  ) {
+    return "Google Cloud ConsoleでGoogle Calendar APIを有効化してください。反映後に再読み込みしてください。";
+  }
+
+  if (status === 401) {
+    return "Google Calendarの認証期限が切れています。設定画面から再ログインしてください。";
+  }
+
+  if (status === 403) {
+    return "Google Calendarの予定を読み取る権限がありません。連携権限を確認してください。";
+  }
+
+  if (status === 429) {
+    return "Google Calendar APIの利用上限に達しました。時間をおいて再読み込みしてください。";
+  }
+
+  return "Google Calendar予定を取得できませんでした";
+}
+
+function fetchGoogleCalendarEvents(
+  accessToken: string,
+  range: GoogleCalendarRange,
+  pageToken?: string
+) {
+  const url = buildGoogleCalendarEventsUrl(range, pageToken);
 
   return fetch(url, {
     headers: {

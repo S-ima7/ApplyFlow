@@ -27,6 +27,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     })
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      if (user.id && account?.provider === "google" && account.providerAccountId) {
+        await prisma.account.updateMany({
+          where: {
+            userId: user.id,
+            provider: "google",
+            providerAccountId: account.providerAccountId
+          },
+          data: {
+            access_token: account.access_token ?? undefined,
+            refresh_token: account.refresh_token ?? undefined,
+            expires_at: account.expires_at ?? undefined,
+            token_type: account.token_type ?? undefined,
+            scope: account.scope ?? undefined,
+            id_token: account.id_token ?? undefined,
+            session_state:
+              typeof account.session_state === "string" ? account.session_state : undefined
+          }
+        });
+      }
+
+      return true;
+    },
     session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;

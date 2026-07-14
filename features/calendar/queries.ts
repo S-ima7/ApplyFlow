@@ -1,5 +1,8 @@
 import { DeadlineStatus, InterviewStatus, ProposedSlotStatus } from "@prisma/client";
-import { getGoogleCalendarEvents } from "@/lib/google-calendar";
+import {
+  getGoogleCalendarEvents,
+  type GoogleCalendarConnection
+} from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
 
 export type CalendarEvent = {
@@ -20,7 +23,12 @@ export type CalendarEvent = {
   };
 };
 
-export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]> {
+export type CalendarData = {
+  events: CalendarEvent[];
+  googleCalendar: GoogleCalendarConnection;
+};
+
+export async function getCalendarData(userId: string): Promise<CalendarData> {
   const [interviews, slots, deadlines, googleCalendar] = await Promise.all([
     prisma.interview.findMany({
       where: {
@@ -101,7 +109,7 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
     getGoogleCalendarEvents(userId)
   ]);
 
-  return [
+  const events: CalendarEvent[] = [
     ...interviews
       .filter((interview) => interview.confirmedStartAt && interview.confirmedEndAt)
       .map((interview) => {
@@ -180,4 +188,17 @@ export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]
       }
     }))
   ];
+
+  return {
+    events,
+    googleCalendar: {
+      status: googleCalendar.status,
+      scope: googleCalendar.scope,
+      message: googleCalendar.message
+    }
+  };
+}
+
+export async function getCalendarEvents(userId: string): Promise<CalendarEvent[]> {
+  return (await getCalendarData(userId)).events;
 }

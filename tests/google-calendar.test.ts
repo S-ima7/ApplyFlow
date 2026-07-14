@@ -1,11 +1,41 @@
 import { describe, expect, it } from "vitest";
 import {
   GOOGLE_CALENDAR_READONLY_SCOPE,
+  buildGoogleCalendarEventsUrl,
+  getGoogleCalendarApiErrorMessage,
   hasGoogleCalendarReadonlyScope,
   mapGoogleCalendarEvent,
   mapGoogleCalendarEvents
 } from "@/lib/google-calendar";
 import { googleCalendarEventsToScheduleItems } from "@/features/conflict-detection/google-calendar";
+
+describe("buildGoogleCalendarEventsUrl", () => {
+  it("requests the full page size and forwards the next page token", () => {
+    const url = buildGoogleCalendarEventsUrl(
+      {
+        timeMin: new Date("2026-07-01T00:00:00.000Z"),
+        timeMax: new Date("2026-09-01T00:00:00.000Z")
+      },
+      "next-token"
+    );
+
+    expect(url.searchParams.get("maxResults")).toBe("2500");
+    expect(url.searchParams.get("pageToken")).toBe("next-token");
+    expect(url.searchParams.get("singleEvents")).toBe("true");
+  });
+});
+
+describe("getGoogleCalendarApiErrorMessage", () => {
+  it("explains how to resolve a disabled Calendar API", () => {
+    expect(
+      getGoogleCalendarApiErrorMessage(403, {
+        error: {
+          message: "Google Calendar API has not been used in this project or it is disabled."
+        }
+      })
+    ).toContain("Google Calendar APIを有効化");
+  });
+});
 
 describe("hasGoogleCalendarReadonlyScope", () => {
   it("detects the readonly Calendar scope", () => {
