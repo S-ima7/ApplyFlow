@@ -113,6 +113,34 @@ describe("getGmailMessageBodyText", () => {
     expect(getGmailMessageBodyText(message)).toBe("Plain text");
   });
 
+  it("joins multiple plain-text body parts and ignores text attachments", () => {
+    const message: GmailApiMessage = {
+      id: "msg-1",
+      payload: {
+        mimeType: "multipart/mixed",
+        parts: [
+          {
+            mimeType: "text/plain",
+            body: { data: Buffer.from("Latest message").toString("base64url") }
+          },
+          {
+            mimeType: "text/plain",
+            body: { data: Buffer.from("Quoted context").toString("base64url") }
+          },
+          {
+            mimeType: "text/plain",
+            filename: "notes.txt",
+            body: { data: Buffer.from("Attachment text").toString("base64url") }
+          }
+        ]
+      }
+    };
+
+    expect(getGmailMessageBodyText(message)).toBe(
+      "Latest message\n\nQuoted context"
+    );
+  });
+
   it("falls back to stripped HTML body", () => {
     const message: GmailApiMessage = {
       id: "msg-1",

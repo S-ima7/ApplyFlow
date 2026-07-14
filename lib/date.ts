@@ -16,6 +16,44 @@ export function parseDateTimeLocal(value: string) {
   return date;
 }
 
+export function parseDateTimeInTimezone(value: string, timezone = DEFAULT_TIMEZONE) {
+  if (!value) {
+    return null;
+  }
+
+  if (/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) {
+    const absoluteDate = new Date(value);
+    return Number.isNaN(absoluteDate.getTime()) ? null : absoluteDate;
+  }
+
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day, hour, minute, second = "0"] = match;
+  const localAsUtc = Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second)
+  );
+  const firstOffset = getTimezoneOffset(new Date(localAsUtc), timezone);
+  let result = new Date(localAsUtc - firstOffset);
+  const secondOffset = getTimezoneOffset(result, timezone);
+
+  if (secondOffset !== firstOffset) {
+    result = new Date(localAsUtc - secondOffset);
+  }
+
+  return Number.isNaN(result.getTime()) ? null : result;
+}
+
 export function formatDateTime(value: Date | string | null | undefined) {
   if (!value) {
     return "-";
@@ -77,4 +115,33 @@ export function toDateTimeLocalValue(value: Date | string | null | undefined) {
   }
 
   return format(new Date(value), "yyyy-MM-dd'T'HH:mm");
+}
+
+function getTimezoneOffset(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)])
+  );
+
+  return (
+    Date.UTC(
+      values.year,
+      values.month - 1,
+      values.day,
+      values.hour,
+      values.minute,
+      values.second
+    ) - date.getTime()
+  );
 }

@@ -47,6 +47,9 @@ describe("buildEmailImportRegistrationData", () => {
       DeadlineType.REPLY_DEADLINE,
       DeadlineType.OFFER_ACCEPTANCE
     ]);
+    expect(result.confirmedSlot?.startAt.toISOString()).toBe(
+      "2026-07-12T10:00:00.000Z"
+    );
   });
 
   it("uses waiting reply statuses when only proposed slots exist", () => {

@@ -81,6 +81,8 @@ export default async function EmailImportConfirmPage({
             <EmailImportConfirmForm
               extractionResultId={extraction.id}
               defaultValues={getEmailImportConfirmDefaults(normalized.data)}
+              fieldConfidence={normalized.data.fieldConfidence}
+              evidence={normalized.data.evidence}
             />
           ) : (
             <p className="text-sm text-red-600">{normalized.message}</p>

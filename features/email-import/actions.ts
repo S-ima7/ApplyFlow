@@ -86,7 +86,9 @@ export async function importAndExtractEmail(
       userId: user.id,
       emailImportId: emailImport.id,
       extractedJson: extraction.data as Prisma.InputJsonValue,
-      confidence: extraction.data.confidence
+      confidence: extraction.data.confidence,
+      modelName: extraction.metadata.model,
+      promptVersion: extraction.metadata.promptVersion
     }
   });
 
@@ -140,7 +142,10 @@ export async function confirmEmailImportRegistration(
   }
 
   const data = parsed.data;
-  const registration = buildEmailImportRegistrationData(data);
+  const registration = buildEmailImportRegistrationData(
+    data,
+    user.timezone ?? "Asia/Tokyo"
+  );
 
   const application = await prisma.$transaction(async (tx) => {
     const company = await tx.company.create({
@@ -232,6 +237,7 @@ export async function confirmEmailImportRegistration(
         id: existing.id
       },
       data: {
+        reviewedJson: data as Prisma.InputJsonValue,
         confirmedAt: new Date(),
         createdApplicationId: createdApplication.id
       }

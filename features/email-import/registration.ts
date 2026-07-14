@@ -6,6 +6,7 @@ import {
   StageStatus
 } from "@prisma/client";
 import type { EmailImportConfirmInput } from "@/features/email-import/schema";
+import { parseDateTimeInTimezone } from "@/lib/date";
 
 export type EmailImportRegistrationData = {
   applicationStatus: ApplicationStatus;
@@ -31,38 +32,43 @@ export type EmailImportRegistrationData = {
 };
 
 export function buildEmailImportRegistrationData(
-  input: EmailImportConfirmInput
+  input: EmailImportConfirmInput,
+  userTimezone = "Asia/Tokyo"
 ): EmailImportRegistrationData {
   const confirmedSlot =
     input.confirmedStartAt && input.confirmedEndAt
       ? {
-          startAt: new Date(input.confirmedStartAt),
-          endAt: new Date(input.confirmedEndAt),
-          timezone: "Asia/Tokyo"
+          startAt: requireDate(input.confirmedStartAt, userTimezone),
+          endAt: requireDate(input.confirmedEndAt, userTimezone),
+          timezone: userTimezone
         }
       : undefined;
 
-  const proposedSlots = input.proposedSlots.map((slot) => ({
-    startAt: new Date(slot.startAt),
-    endAt: new Date(slot.endAt),
-    timezone: slot.timezone || "Asia/Tokyo",
-    note: slot.note,
-    status: ProposedSlotStatus.PENDING
-  }));
+  const proposedSlots = input.proposedSlots.map((slot) => {
+    const timezone = slot.timezone || userTimezone;
+
+    return {
+      startAt: requireDate(slot.startAt, timezone),
+      endAt: requireDate(slot.endAt, timezone),
+      timezone,
+      note: slot.note,
+      status: ProposedSlotStatus.PENDING
+    };
+  });
 
   const deadlines = [
     input.replyDeadlineAt
       ? {
           type: DeadlineType.REPLY_DEADLINE,
           title: "返信期限",
-          dueAt: new Date(input.replyDeadlineAt)
+          dueAt: requireDate(input.replyDeadlineAt, userTimezone)
         }
       : null,
     input.offerAcceptanceDeadlineAt
       ? {
           type: DeadlineType.OFFER_ACCEPTANCE,
           title: "承諾期限",
-          dueAt: new Date(input.offerAcceptanceDeadlineAt)
+          dueAt: requireDate(input.offerAcceptanceDeadlineAt, userTimezone)
         }
       : null
   ].filter((deadline): deadline is NonNullable<typeof deadline> => Boolean(deadline));
@@ -101,4 +107,14 @@ export function buildEmailImportRegistrationData(
     proposedSlots: [],
     deadlines
   };
+}
+
+function requireDate(value: string, timezone: string) {
+  const date = parseDateTimeInTimezone(value, timezone);
+
+  if (!date) {
+    throw new Error("Invalid local datetime");
+  }
+
+  return date;
 }

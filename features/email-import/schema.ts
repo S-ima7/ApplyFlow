@@ -32,6 +32,34 @@ const isoDateTimeWithTimezone = z
 const nullableString = z.string().trim().nullable();
 const nullableIsoDateTime = isoDateTimeWithTimezone.nullable();
 
+export const emailExtractionFieldKeys = [
+  "companyName",
+  "position",
+  "stageType",
+  "stageName",
+  "proposedSlots",
+  "confirmedSlot",
+  "replyDeadline",
+  "offerAcceptanceDeadline",
+  "meetingUrl",
+  "interviewerName"
+] as const;
+
+const fieldConfidenceSchema = z.object(
+  Object.fromEntries(
+    emailExtractionFieldKeys.map((key) => [key, z.number().min(0).max(1)])
+  ) as Record<(typeof emailExtractionFieldKeys)[number], z.ZodNumber>
+);
+
+const extractionEvidenceSchema = z.object(
+  Object.fromEntries(
+    emailExtractionFieldKeys.map((key) => [key, z.string().trim().nullable()])
+  ) as Record<
+    (typeof emailExtractionFieldKeys)[number],
+    z.ZodNullable<z.ZodString>
+  >
+);
+
 export const extractedSlotSchema = z
   .object({
     startAt: isoDateTimeWithTimezone,
@@ -72,7 +100,9 @@ export const emailExtractionSchema = z.object({
   offerAcceptanceDeadline: nullableIsoDateTime,
   meetingUrl: nullableString,
   interviewerName: nullableString,
-  confidence: z.number().min(0).max(1)
+  confidence: z.number().min(0).max(1),
+  fieldConfidence: fieldConfidenceSchema.optional(),
+  evidence: extractionEvidenceSchema.optional()
 });
 
 const localDateTime = z.string().trim();
@@ -115,6 +145,7 @@ export const emailImportConfirmSchema = z
   });
 
 export type EmailExtraction = z.infer<typeof emailExtractionSchema>;
+export type EmailExtractionFieldKey = (typeof emailExtractionFieldKeys)[number];
 export type EmailImportConfirmInput = z.infer<typeof emailImportConfirmSchema>;
 
 export function hasExplicitTimezone(value: string) {
