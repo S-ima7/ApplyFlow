@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Clock3,
   LayoutDashboard,
+  Mail,
   Settings
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ const navItems = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/waiting", label: "Waiting Reply", icon: Clock3 },
   { href: "/deadlines", label: "Deadlines", icon: AlertTriangle },
+  { href: "/email-import", label: "Gmail Import", icon: Mail },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 

@@ -3,11 +3,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getGoogleCalendarConnectionStatus } from "@/lib/google-calendar";
+import { getGmailConnectionStatus } from "@/lib/gmail";
 import { requireUser } from "@/lib/auth-guard";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const googleCalendar = await getGoogleCalendarConnectionStatus(user.id);
+  const gmail = await getGmailConnectionStatus(user.id);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -58,7 +60,30 @@ export default async function SettingsPage() {
               </form>
             ) : null}
           </div>
-          <p>Gmail取り込みとAI抽出はv1.0で追加します。</p>
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-slate-900">Gmail</p>
+                <Badge variant={gmail.status === "connected" ? "success" : "warning"}>
+                  {getGoogleCalendarStatusLabel(gmail.status)}
+                </Badge>
+              </div>
+              <p>選考メールの検索とAI抽出に利用します。メール本文はDBに保存しません。</p>
+              {gmail.message ? <p className="text-amber-700">{gmail.message}</p> : null}
+            </div>
+            {gmail.status !== "connected" ? (
+              <form
+                action={async () => {
+                  "use server";
+                  await signIn("google", { redirectTo: "/settings" });
+                }}
+              >
+                <Button type="submit" size="sm">
+                  再ログイン
+                </Button>
+              </form>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
     </div>

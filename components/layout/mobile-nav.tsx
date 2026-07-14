@@ -6,6 +6,7 @@ const navItems = [
   { href: "/calendar", label: "Calendar" },
   { href: "/waiting", label: "Waiting" },
   { href: "/deadlines", label: "Deadlines" },
+  { href: "/email-import", label: "Gmail" },
   { href: "/settings", label: "Settings" }
 ];
 
