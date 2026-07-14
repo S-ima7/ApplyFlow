@@ -1,4 +1,9 @@
-import { InterviewStatus, ProposedSlotStatus } from "@prisma/client";
+import {
+  InterviewStatus,
+  ProposedSlotStatus,
+  ScheduleEventSource
+} from "@prisma/client";
+import { getGoogleCalendarImportKey } from "@/features/calendar/import";
 import { prisma } from "@/lib/prisma";
 import { detectConflicts } from "@/features/conflict-detection";
 import { googleCalendarEventsToScheduleItems } from "@/features/conflict-detection/google-calendar";
@@ -9,7 +14,7 @@ export async function getScheduleItemsForConflict(
   userId: string,
   googleRange?: GoogleCalendarRange
 ): Promise<ScheduleItem[]> {
-  const [slots, interviews, googleCalendar] = await Promise.all([
+  const [slots, interviews, scheduleEvents, googleCalendar] = await Promise.all([
     prisma.proposedSlot.findMany({
       where: {
         userId,
@@ -73,6 +78,25 @@ export async function getScheduleItemsForConflict(
         }
       }
     }),
+    prisma.scheduleEvent.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        ...(googleRange
+          ? {
+              startAt: { lt: googleRange.timeMax },
+              endAt: { gt: googleRange.timeMin }
+            }
+          : {})
+      },
+      include: {
+        application: {
+          include: {
+            company: true
+          }
+        }
+      }
+    }),
     getGoogleCalendarEvents(userId, googleRange)
   ]);
 
@@ -112,9 +136,44 @@ export async function getScheduleItemsForConflict(
       };
     });
 
-  const googleItems = googleCalendarEventsToScheduleItems(googleCalendar.events);
+  const importedGoogleKeys = new Set(
+    scheduleEvents
+      .filter(
+        (event) =>
+          event.source === ScheduleEventSource.GOOGLE_CALENDAR &&
+          event.externalCalendarId &&
+          event.externalEventId
+      )
+      .map((event) =>
+        getGoogleCalendarImportKey(
+          event.externalCalendarId as string,
+          event.externalEventId as string
+        )
+      )
+  );
 
-  return [...slotItems, ...interviewItems, ...googleItems];
+  const scheduleItems: ScheduleItem[] = scheduleEvents.map((event) => ({
+    id: `schedule:${event.id}`,
+    kind: "google_calendar_event" as const,
+    status: "confirmed" as const,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    title: event.title,
+    companyName: event.application?.company.name ?? "ApplyFlow予定",
+    position: event.application?.position ?? "Google Calendarから取込済み",
+    applicationId: event.applicationId ?? undefined
+  }));
+
+  const googleItems = googleCalendarEventsToScheduleItems(
+    googleCalendar.events.filter(
+      (event) =>
+        !importedGoogleKeys.has(
+          getGoogleCalendarImportKey(event.calendarId, event.externalEventId)
+        )
+    )
+  );
+
+  return [...slotItems, ...interviewItems, ...scheduleItems, ...googleItems];
 }
 
 export async function getConflictAlertsForUser(userId: string): Promise<ConflictAlert[]> {

@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   GOOGLE_CALENDAR_READONLY_SCOPE,
+  buildGoogleCalendarEventUrl,
   buildGoogleCalendarEventsUrl,
   getGoogleCalendarApiErrorMessage,
   hasGoogleCalendarReadonlyScope,
   mapGoogleCalendarEvent,
   mapGoogleCalendarEvents
 } from "@/lib/google-calendar";
+import {
+  buildScheduleEventImportData,
+  getGoogleCalendarImportKey
+} from "@/features/calendar/import";
 import { googleCalendarEventsToScheduleItems } from "@/features/conflict-detection/google-calendar";
 
 describe("buildGoogleCalendarEventsUrl", () => {
@@ -22,6 +27,14 @@ describe("buildGoogleCalendarEventsUrl", () => {
     expect(url.searchParams.get("maxResults")).toBe("2500");
     expect(url.searchParams.get("pageToken")).toBe("next-token");
     expect(url.searchParams.get("singleEvents")).toBe("true");
+  });
+});
+
+describe("buildGoogleCalendarEventUrl", () => {
+  it("encodes calendar and event identifiers", () => {
+    expect(buildGoogleCalendarEventUrl("team@example.com", "event/1").pathname).toBe(
+      "/calendar/v3/calendars/team%40example.com/events/event%2F1"
+    );
   });
 });
 
@@ -72,6 +85,31 @@ describe("mapGoogleCalendarEvent", () => {
     });
     expect(event?.startAt.toISOString()).toBe("2026-07-12T01:00:00.000Z");
     expect(event?.endAt.toISOString()).toBe("2026-07-12T02:00:00.000Z");
+  });
+
+  it("keeps import metadata and detects a meeting URL in the description", () => {
+    const event = mapGoogleCalendarEvent({
+      id: "event-import",
+      summary: "一次面接",
+      description: "参加URL https://meet.google.com/abc-defg-hij",
+      location: "オンライン",
+      updated: "2026-07-12T01:00:00.000Z",
+      start: {
+        dateTime: "2026-07-12T10:00:00+09:00",
+        timeZone: "Asia/Tokyo"
+      },
+      end: {
+        dateTime: "2026-07-12T11:00:00+09:00",
+        timeZone: "Asia/Tokyo"
+      }
+    });
+
+    expect(event).toMatchObject({
+      meetingUrl: "https://meet.google.com/abc-defg-hij",
+      location: "オンライン",
+      timezone: "Asia/Tokyo"
+    });
+    expect(event?.updatedAt?.toISOString()).toBe("2026-07-12T01:00:00.000Z");
   });
 
   it("maps an all-day Google Calendar event", () => {
@@ -126,5 +164,37 @@ describe("mapGoogleCalendarEvent", () => {
     });
 
     expect(googleCalendarEventsToScheduleItems(event ? [event] : [])).toHaveLength(0);
+  });
+});
+
+describe("Google Calendar import data", () => {
+  it("builds an idempotency key and an app-owned schedule snapshot", () => {
+    const event = mapGoogleCalendarEvent({
+      id: "event-1",
+      summary: "面接",
+      htmlLink: "https://calendar.google.com/event",
+      start: { dateTime: "2026-07-12T10:00:00+09:00" },
+      end: { dateTime: "2026-07-12T11:00:00+09:00" }
+    });
+
+    expect(getGoogleCalendarImportKey("primary", "event-1")).toBe(
+      "primary:event-1"
+    );
+    expect(event).not.toBeNull();
+
+    const data = buildScheduleEventImportData(
+      "user-1",
+      event!,
+      "application-1"
+    );
+
+    expect(data).toMatchObject({
+      userId: "user-1",
+      applicationId: "application-1",
+      source: "GOOGLE_CALENDAR",
+      externalCalendarId: "primary",
+      externalEventId: "event-1",
+      title: "面接"
+    });
   });
 });

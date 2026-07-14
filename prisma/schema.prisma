@@ -103,6 +103,11 @@ enum DeadlineStatus {
   CANCELLED
 }
 
+enum ScheduleEventSource {
+  GOOGLE_CALENDAR
+  MANUAL
+}
+
 enum ActivityAction {
   APPLICATION_CREATED
   APPLICATION_UPDATED
@@ -132,18 +137,19 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
+  accounts Account[]
+  sessions Session[]
 
-  companies     Company[]
-  applications  Application[]
-  stages        SelectionStage[]
-  interviews    Interview[]
-  proposedSlots ProposedSlot[]
-  deadlines     Deadline[]
-  activityLogs  ActivityLog[]
-  emailImports  EmailImport[]
-  aiExtractions AiExtractionResult[]
+  companies      Company[]
+  applications   Application[]
+  stages         SelectionStage[]
+  interviews     Interview[]
+  proposedSlots  ProposedSlot[]
+  deadlines      Deadline[]
+  activityLogs   ActivityLog[]
+  scheduleEvents ScheduleEvent[]
+  emailImports   EmailImport[]
+  aiExtractions  AiExtractionResult[]
 }
 
 model Account {
@@ -220,9 +226,10 @@ model Application {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
-  stages       SelectionStage[]
-  deadlines    Deadline[]
-  activityLogs ActivityLog[]
+  stages                   SelectionStage[]
+  deadlines                Deadline[]
+  activityLogs             ActivityLog[]
+  scheduleEvents           ScheduleEvent[]
   createdFromAiExtractions AiExtractionResult[] @relation("AiExtractionCreatedApplication")
 
   @@index([userId, status])
@@ -347,8 +354,41 @@ model ActivityLog {
   @@index([applicationId, createdAt])
 }
 
+model ScheduleEvent {
+  id                 String              @id @default(cuid())
+  userId             String
+  applicationId      String?
+  source             ScheduleEventSource
+  externalCalendarId String?
+  externalEventId    String?
+  title              String
+  description        String?
+  location           String?
+  meetingUrl         String?
+  startAt            DateTime
+  endAt              DateTime
+  startDate          String?
+  endDate            String?
+  allDay             Boolean             @default(false)
+  timezone           String              @default("Asia/Tokyo")
+  externalUrl        String?
+  sourceUpdatedAt    DateTime?
+  importedAt         DateTime            @default(now())
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, source, externalCalendarId, externalEventId])
+  @@index([userId, startAt])
+  @@index([applicationId])
+  @@index([deletedAt])
+}
+
 model EmailImport {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   userId         String
   gmailMessageId String
   gmailThreadId  String?
@@ -356,7 +396,7 @@ model EmailImport {
   fromAddress    String?
   snippet        String?
   sentAt         DateTime?
-  importedAt     DateTime @default(now())
+  importedAt     DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -372,6 +412,9 @@ model AiExtractionResult {
   emailImportId        String
   extractedJson        Json
   confidence           Float?
+  modelName            String?
+  promptVersion        String?
+  reviewedJson         Json?
   confirmedAt          DateTime?
   createdApplicationId String?
   createdAt            DateTime  @default(now())
