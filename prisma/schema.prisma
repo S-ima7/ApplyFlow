@@ -142,6 +142,8 @@ model User {
   proposedSlots ProposedSlot[]
   deadlines     Deadline[]
   activityLogs  ActivityLog[]
+  emailImports  EmailImport[]
+  aiExtractions AiExtractionResult[]
 }
 
 model Account {
@@ -221,6 +223,7 @@ model Application {
   stages       SelectionStage[]
   deadlines    Deadline[]
   activityLogs ActivityLog[]
+  createdFromAiExtractions AiExtractionResult[] @relation("AiExtractionCreatedApplication")
 
   @@index([userId, status])
   @@index([userId, priority])
@@ -342,4 +345,42 @@ model ActivityLog {
 
   @@index([userId, createdAt])
   @@index([applicationId, createdAt])
+}
+
+model EmailImport {
+  id             String   @id @default(cuid())
+  userId         String
+  gmailMessageId String
+  gmailThreadId  String?
+  subject        String?
+  fromAddress    String?
+  snippet        String?
+  sentAt         DateTime?
+  importedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  aiExtractionResults AiExtractionResult[]
+
+  @@unique([userId, gmailMessageId])
+  @@index([userId, importedAt])
+}
+
+model AiExtractionResult {
+  id                   String    @id @default(cuid())
+  userId               String
+  emailImportId        String
+  extractedJson        Json
+  confidence           Float?
+  confirmedAt          DateTime?
+  createdApplicationId String?
+  createdAt            DateTime  @default(now())
+
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailImport        EmailImport  @relation(fields: [emailImportId], references: [id], onDelete: Cascade)
+  createdApplication Application? @relation("AiExtractionCreatedApplication", fields: [createdApplicationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([emailImportId])
+  @@index([createdApplicationId])
 }
