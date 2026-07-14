@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDashboardData } from "@/features/applications/queries";
 import { getConflictAlertsForUser } from "@/features/conflict-detection/queries";
 import { requireUser } from "@/lib/auth-guard";
-import { formatTimeRange, daysUntil } from "@/lib/date";
+import { formatDate, formatTimeRange, daysUntil } from "@/lib/date";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -16,8 +16,9 @@ export default async function DashboardPage() {
 
   const summary = [
     {
-      label: "今週の面談",
-      value: dashboard.weeklyInterviews.length,
+      label: "今週の予定",
+      value:
+        dashboard.weeklyInterviews.length + dashboard.weeklyScheduleEvents.length,
       icon: CalendarDays,
       href: "/calendar"
     },
@@ -84,8 +85,12 @@ export default async function DashboardPage() {
             <CardTitle>今日・今週の予定</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {[...dashboard.weeklyInterviews, ...dashboard.weeklyProposedSlots].length === 0 ? (
-              <p className="text-sm text-slate-500">今週の面談・候補日時はありません。</p>
+            {[
+              ...dashboard.weeklyInterviews,
+              ...dashboard.weeklyProposedSlots,
+              ...dashboard.weeklyScheduleEvents
+            ].length === 0 ? (
+              <p className="text-sm text-slate-500">今週の予定・候補日時はありません。</p>
             ) : null}
             {dashboard.weeklyInterviews.map((interview) => {
               const application = interview.selectionStage.application;
@@ -125,6 +130,36 @@ export default async function DashboardPage() {
                   </div>
                   <p className="mt-2 text-sm text-slate-700">
                     {formatTimeRange(slot.startAt, slot.endAt)}
+                  </p>
+                </Link>
+              );
+            })}
+            {dashboard.weeklyScheduleEvents.map((event) => {
+              const application = event.application;
+
+              return (
+                <Link
+                  key={event.id}
+                  href={application ? `/applications/${application.id}` : "/calendar"}
+                  className="block rounded-md border border-violet-200 bg-violet-50/50 p-3 hover:bg-violet-50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-950">{event.title}</p>
+                      <p className="text-sm text-slate-500">
+                        {application
+                          ? `${application.company.name} / ${application.position}`
+                          : "Google Calendarから取り込んだ予定"}
+                      </p>
+                    </div>
+                    <Badge className="border-violet-200 bg-violet-50 text-violet-700">
+                      取込済み
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {event.allDay
+                      ? `${event.startDate?.replaceAll("-", "/") ?? formatDate(event.startAt)} 終日`
+                      : formatTimeRange(event.startAt, event.endAt)}
                   </p>
                 </Link>
               );
