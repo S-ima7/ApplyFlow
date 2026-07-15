@@ -47,10 +47,19 @@ export type GoogleCalendarEvent = {
   allDay: boolean;
   transparency: "opaque" | "transparent";
   htmlLink?: string;
+  description?: string;
+  location?: string;
+  meetingUrl?: string;
+  timezone?: string;
+  updatedAt?: Date;
 };
 
 export type GoogleCalendarEventsResult = GoogleCalendarConnection & {
   events: GoogleCalendarEvent[];
+};
+
+export type GoogleCalendarEventResult = GoogleCalendarConnection & {
+  event?: GoogleCalendarEvent;
 };
 
 export type GoogleCalendarApiEvent = {
@@ -59,6 +68,10 @@ export type GoogleCalendarApiEvent = {
   status?: string;
   summary?: string;
   htmlLink?: string;
+  description?: string;
+  location?: string;
+  hangoutLink?: string;
+  updated?: string;
   transparency?: string;
   start?: GoogleCalendarApiEventDate;
   end?: GoogleCalendarApiEventDate;
@@ -201,6 +214,79 @@ export async function getGoogleCalendarEvents(
   }
 }
 
+export async function getGoogleCalendarEventById(
+  userId: string,
+  calendarId: string,
+  eventId: string
+): Promise<GoogleCalendarEventResult> {
+  const account = await getGoogleAccount(userId);
+
+  if (!account) {
+    return {
+      status: "not_connected",
+      message: "Googleアカウントが連携されていません"
+    };
+  }
+
+  if (!hasGoogleCalendarReadonlyScope(account.scope)) {
+    return {
+      status: "missing_scope",
+      scope: account.scope,
+      message: "Google Calendar readonly権限が許可されていません"
+    };
+  }
+
+  const accessToken = await getValidGoogleAccessToken(account);
+
+  if (!accessToken) {
+    return {
+      status: "missing_token",
+      scope: account.scope,
+      message: "Google Calendarの再認証が必要です"
+    };
+  }
+
+  try {
+    const response = await fetch(buildGoogleCalendarEventUrl(calendarId, eventId), {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    const data = (await response.json()) as GoogleCalendarApiEvent &
+      GoogleCalendarApiEventsResponse;
+
+    if (!response.ok) {
+      return {
+        status: "error",
+        scope: account.scope,
+        message: getGoogleCalendarApiErrorMessage(response.status, data)
+      };
+    }
+
+    const event = mapGoogleCalendarEvent(data, calendarId);
+
+    if (!event) {
+      return {
+        status: "error",
+        scope: account.scope,
+        message: "対象のGoogle Calendar予定は削除済みか、日時が不正です"
+      };
+    }
+
+    return {
+      status: "connected",
+      scope: account.scope,
+      event
+    };
+  } catch {
+    return {
+      status: "error",
+      scope: account.scope,
+      message: "Google Calendar予定を取得できませんでした"
+    };
+  }
+}
+
 export function mapGoogleCalendarEvents(
   events: GoogleCalendarApiEvent[],
   calendarId = "primary"
@@ -239,7 +325,12 @@ export function mapGoogleCalendarEvent(
     endDate: end.dateText,
     allDay: start.allDay && end.allDay,
     transparency: event.transparency === "transparent" ? "transparent" : "opaque",
-    htmlLink: event.htmlLink
+    htmlLink: event.htmlLink,
+    description: event.description?.trim() || undefined,
+    location: event.location?.trim() || undefined,
+    meetingUrl: event.hangoutLink?.trim() || findMeetingUrl(event.description),
+    timezone: event.start?.timeZone ?? DEFAULT_TIMEZONE,
+    updatedAt: parseOptionalDate(event.updated)
   };
 }
 
@@ -260,6 +351,12 @@ export function buildGoogleCalendarEventsUrl(
   }
 
   return url;
+}
+
+export function buildGoogleCalendarEventUrl(calendarId: string, eventId: string) {
+  return new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
+  );
 }
 
 export function getGoogleCalendarApiErrorMessage(
@@ -285,6 +382,10 @@ export function getGoogleCalendarApiErrorMessage(
 
   if (status === 429) {
     return "Google Calendar APIの利用上限に達しました。時間をおいて再読み込みしてください。";
+  }
+
+  if (status === 404) {
+    return "対象のGoogle Calendar予定が見つかりません";
   }
 
   return "Google Calendar予定を取得できませんでした";
@@ -338,4 +439,21 @@ function parseGoogleEventDate(value?: GoogleCalendarApiEventDate) {
 
 function getAllDayOffset() {
   return DEFAULT_TIMEZONE === "Asia/Tokyo" ? "+09:00" : "Z";
+}
+
+function parseOptionalDate(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function findMeetingUrl(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  return value.match(/https?:\/\/[^\s<>]*(?:meet\.google\.com|zoom\.us|teams\.microsoft\.com)[^\s<>]*/i)?.[0];
 }

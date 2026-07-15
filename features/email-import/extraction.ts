@@ -1,5 +1,7 @@
 import { stageTypeValues } from "@/features/applications/schema";
+import { prepareEmailBodyForExtraction } from "@/features/email-import/preprocessing";
 import {
+  emailExtractionFieldKeys,
   emailExtractionSchema,
   type EmailExtraction
 } from "@/features/email-import/schema";
@@ -18,15 +20,41 @@ type OpenAIResponsesPayload = {
   };
 };
 
+export const EMAIL_EXTRACTION_PROMPT_VERSION = "2026-07-14.v2";
+
 export type EmailExtractionResult =
   | {
       ok: true;
       data: EmailExtraction;
+      metadata: {
+        model: string;
+        promptVersion: string;
+      };
     }
   | {
       ok: false;
       message: string;
     };
+
+const confidenceProperties = Object.fromEntries(
+  emailExtractionFieldKeys.map((key) => [
+    key,
+    {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    }
+  ])
+);
+
+const evidenceProperties = Object.fromEntries(
+  emailExtractionFieldKeys.map((key) => [
+    key,
+    nullableStringSchema(
+      "A short excerpt supporting the extracted value, or null when the value is unknown"
+    )
+  ])
+);
 
 export const EMAIL_EXTRACTION_JSON_SCHEMA = {
   type: "object",
@@ -42,7 +70,9 @@ export const EMAIL_EXTRACTION_JSON_SCHEMA = {
     "offerAcceptanceDeadline",
     "meetingUrl",
     "interviewerName",
-    "confidence"
+    "confidence",
+    "fieldConfidence",
+    "evidence"
   ],
   properties: {
     companyName: nullableStringSchema(),
@@ -67,7 +97,7 @@ export const EMAIL_EXTRACTION_JSON_SCHEMA = {
             type: "string",
             description: "ISO 8601 datetime with timezone"
           },
-          timezone: nullableStringSchema("IANA timezone if present, otherwise Asia/Tokyo")
+          timezone: nullableStringSchema("IANA timezone if present, otherwise the user timezone")
         }
       }
     },
@@ -78,7 +108,7 @@ export const EMAIL_EXTRACTION_JSON_SCHEMA = {
       properties: {
         startAt: nullableStringSchema("ISO 8601 datetime with timezone, or null"),
         endAt: nullableStringSchema("ISO 8601 datetime with timezone, or null"),
-        timezone: nullableStringSchema("IANA timezone if present, otherwise Asia/Tokyo")
+        timezone: nullableStringSchema("IANA timezone if present, otherwise the user timezone")
       }
     },
     replyDeadline: nullableStringSchema("ISO 8601 datetime with timezone, or null"),
@@ -91,6 +121,18 @@ export const EMAIL_EXTRACTION_JSON_SCHEMA = {
       type: "number",
       minimum: 0,
       maximum: 1
+    },
+    fieldConfidence: {
+      type: "object",
+      additionalProperties: false,
+      required: [...emailExtractionFieldKeys],
+      properties: confidenceProperties
+    },
+    evidence: {
+      type: "object",
+      additionalProperties: false,
+      required: [...emailExtractionFieldKeys],
+      properties: evidenceProperties
     }
   }
 } as const;
@@ -107,13 +149,18 @@ export function normalizeEmailExtraction(value: unknown): EmailExtractionResult 
 
   return {
     ok: true,
-    data: parsed.data
+    data: parsed.data,
+    metadata: {
+      model: "stored-result",
+      promptVersion: "legacy"
+    }
   };
 }
 
 export async function extractEmailWithOpenAI(
   email: GmailFullMessage,
-  timezone = "Asia/Tokyo"
+  timezone = "Asia/Tokyo",
+  referenceNow = new Date()
 ): Promise<EmailExtractionResult> {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -124,40 +171,53 @@ export async function extractEmailWithOpenAI(
     };
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      input: [
-        {
-          role: "system",
-          content:
-            "You extract recruiting/application process information from Japanese or English email. Return only fields matching the schema. Use null when unknown. Normalize all datetimes to ISO 8601 with an explicit timezone. Use the user's timezone for ambiguous local times."
-        },
-        {
-          role: "user",
-          content: buildExtractionPrompt(email, timezone)
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  let response: Response;
+
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({
+        model,
+        input: [
+          {
+            role: "system",
+            content: buildSystemPrompt()
+          },
+          {
+            role: "user",
+            content: buildExtractionPrompt(email, timezone, referenceNow)
+          }
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "applyflow_email_extraction",
+            strict: true,
+            schema: EMAIL_EXTRACTION_JSON_SCHEMA
+          }
         }
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "applyflow_email_extraction",
-          strict: true,
-          schema: EMAIL_EXTRACTION_JSON_SCHEMA
-        }
-      }
-    })
-  });
+      })
+    });
+  } catch {
+    return {
+      ok: false,
+      message: "AI抽出がタイムアウトしました。時間をおいて再実行してください"
+    };
+  }
 
   if (!response.ok) {
     return {
       ok: false,
-      message: "AI抽出に失敗しました"
+      message:
+        response.status === 429
+          ? "AI抽出の利用上限に達しました。時間をおいて再実行してください"
+          : "AI抽出に失敗しました"
     };
   }
 
@@ -172,7 +232,20 @@ export async function extractEmailWithOpenAI(
   }
 
   try {
-    return normalizeEmailExtraction(JSON.parse(text));
+    const normalized = normalizeEmailExtraction(JSON.parse(text));
+
+    if (!normalized.ok) {
+      return normalized;
+    }
+
+    return {
+      ok: true,
+      data: normalized.data,
+      metadata: {
+        model,
+        promptVersion: EMAIL_EXTRACTION_PROMPT_VERSION
+      }
+    };
   } catch {
     return {
       ok: false,
@@ -194,21 +267,41 @@ export function extractTextFromOpenAIResponse(data: OpenAIResponsesPayload) {
     .trim();
 }
 
-function buildExtractionPrompt(email: GmailFullMessage, timezone: string) {
+export function buildExtractionPrompt(
+  email: GmailFullMessage,
+  timezone: string,
+  referenceNow: Date
+) {
   const receivedAt = email.sentAt?.toISOString() ?? "unknown";
-  const body = email.bodyText.slice(0, 12000);
+  const body = prepareEmailBodyForExtraction(email.bodyText);
 
   return [
     `User timezone: ${timezone}`,
-    `Current reference datetime: ${new Date().toISOString()}`,
+    `Current reference datetime: ${referenceNow.toISOString()}`,
     `Email sent/received datetime: ${receivedAt}`,
     `Subject: ${email.subject ?? ""}`,
     `From: ${email.fromAddress ?? ""}`,
     `Snippet: ${email.snippet ?? ""}`,
     "",
-    "Email body:",
-    body
+    "Latest message (authoritative for changes and cancellations):",
+    body.latestMessage || "(empty)",
+    "",
+    "Quoted or forwarded context (use only to fill omitted context):",
+    body.quotedContext || "(none)"
   ].join("\n");
+}
+
+function buildSystemPrompt() {
+  return [
+    "Extract recruiting/application process information from Japanese or English email.",
+    "Return only fields matching the JSON schema and use null when the source does not support a value.",
+    "Treat the latest message as authoritative: a cancellation, reschedule, or confirmed time overrides older quoted content.",
+    "Do not treat a sender signature, email footer, or unrelated calendar text as a company, position, deadline, or candidate slot.",
+    "Distinguish proposed candidate times from a single confirmed time. Do not copy the confirmed time into proposedSlots.",
+    "Resolve relative dates from the email sent datetime first, then the current reference datetime. Use the user timezone when no timezone is written.",
+    "Normalize every datetime to ISO 8601 with an explicit numeric offset.",
+    "For each field, provide calibrated confidence and a short supporting excerpt. Use null evidence and low confidence when unknown."
+  ].join(" ");
 }
 
 function nullableStringSchema(description?: string) {

@@ -41,6 +41,11 @@ a {
   text-decoration: none;
 }
 
+a:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
 .fc {
   --fc-border-color: #d9dee8;
   --fc-page-bg-color: #ffffff;
@@ -103,4 +108,27 @@ a {
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
   color: #64748b;
+}
+
+.fc .applyflow-event-imported {
+  background: #7c3aed;
+  border: 1px solid #6d28d9;
+  color: #ffffff;
+}
+
+@media (max-width: 640px) {
+  .fc .fc-toolbar {
+    align-items: flex-start;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 1rem;
+  }
+
+  .fc .fc-button {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+  }
 }

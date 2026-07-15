@@ -267,14 +267,16 @@ export function mapGmailMessageSummary(message: GmailApiMessage): GmailMessageSu
 }
 
 export function getGmailMessageBodyText(message: GmailApiMessage) {
-  const plainText = findPayloadText(message.payload, "text/plain");
+  const plainTexts = collectPayloadTexts(message.payload, "text/plain");
 
-  if (plainText) {
-    return plainText;
+  if (plainTexts.length > 0) {
+    return joinUniqueMessageParts(plainTexts);
   }
 
-  const htmlText = findPayloadText(message.payload, "text/html");
-  return htmlText ? stripHtml(htmlText) : "";
+  const htmlTexts = collectPayloadTexts(message.payload, "text/html");
+  return htmlTexts.length > 0
+    ? joinUniqueMessageParts(htmlTexts.map((value) => stripHtml(value)))
+    : "";
 }
 
 export function decodeBase64Url(value: string) {
@@ -307,37 +309,57 @@ function parseGmailDate(internalDate?: string, dateHeader?: string) {
   return Number.isNaN(fromHeader.getTime()) ? undefined : fromHeader;
 }
 
-function findPayloadText(payload: GmailApiPayload | undefined, mimeType: string): string | null {
+function collectPayloadTexts(
+  payload: GmailApiPayload | undefined,
+  mimeType: string
+): string[] {
   if (!payload) {
-    return null;
+    return [];
   }
 
-  if (payload.mimeType === mimeType && payload.body?.data) {
-    return decodeBase64Url(payload.body.data);
-  }
+  const values: string[] = [];
 
-  for (const part of payload.parts ?? []) {
-    const found = findPayloadText(part, mimeType);
+  if (
+    payload.mimeType === mimeType &&
+    payload.body?.data &&
+    !payload.filename?.trim()
+  ) {
+    const decoded = decodeBase64Url(payload.body.data).trim();
 
-    if (found) {
-      return found;
+    if (decoded) {
+      values.push(decoded);
     }
   }
 
-  return null;
+  for (const part of payload.parts ?? []) {
+    values.push(...collectPayloadTexts(part, mimeType));
+  }
+
+  return values;
 }
 
 function stripHtml(value: string) {
   return value
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li|tr|h[1-6])>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function joinUniqueMessageParts(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].join(
+    "\n\n"
+  );
 }
 
 async function getGmailAccess(userId: string) {

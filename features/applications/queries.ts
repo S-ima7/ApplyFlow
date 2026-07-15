@@ -121,7 +121,8 @@ export async function getDashboardData(userId: string) {
     weeklyInterviews,
     waitingInterviews,
     upcomingDeadlines,
-    weeklyProposedSlots
+    weeklyProposedSlots,
+    weeklyScheduleEvents
   ] = await Promise.all([
     prisma.application.count({
       where: {
@@ -264,6 +265,29 @@ export async function getDashboardData(userId: string) {
         startAt: "asc"
       },
       take: 8
+    }),
+    prisma.scheduleEvent.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        startAt: {
+          lte: weekEnd
+        },
+        endAt: {
+          gte: now
+        }
+      },
+      include: {
+        application: {
+          include: {
+            company: true
+          }
+        }
+      },
+      orderBy: {
+        startAt: "asc"
+      },
+      take: 8
     })
   ]);
 
@@ -272,6 +296,7 @@ export async function getDashboardData(userId: string) {
     weeklyInterviews,
     waitingInterviews,
     upcomingDeadlines,
-    weeklyProposedSlots
+    weeklyProposedSlots,
+    weeklyScheduleEvents
   };
 }

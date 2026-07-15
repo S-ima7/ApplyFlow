@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDashboardData } from "@/features/applications/queries";
 import { getConflictAlertsForUser } from "@/features/conflict-detection/queries";
 import { requireUser } from "@/lib/auth-guard";
-import { formatTimeRange, daysUntil } from "@/lib/date";
+import { formatDate, formatTimeRange, daysUntil } from "@/lib/date";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -16,29 +16,35 @@ export default async function DashboardPage() {
 
   const summary = [
     {
-      label: "今週の面談",
-      value: dashboard.weeklyInterviews.length,
-      icon: CalendarDays
+      label: "今週の予定",
+      value:
+        dashboard.weeklyInterviews.length + dashboard.weeklyScheduleEvents.length,
+      icon: CalendarDays,
+      href: "/calendar"
     },
     {
       label: "返信待ち",
       value: dashboard.waitingInterviews.length,
-      icon: Clock3
+      icon: Clock3,
+      href: "/waiting"
     },
     {
       label: "期限間近",
       value: dashboard.upcomingDeadlines.length,
-      icon: Timer
+      icon: Timer,
+      href: "/deadlines"
     },
     {
       label: "衝突",
       value: conflicts.length,
-      icon: AlertTriangle
+      icon: AlertTriangle,
+      href: "/calendar"
     },
     {
       label: "進行中応募",
       value: dashboard.activeApplications,
-      icon: BriefcaseBusiness
+      icon: BriefcaseBusiness,
+      href: "/applications"
     }
   ];
 
@@ -46,7 +52,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-slate-950">Dashboard</h2>
+          <h2 className="text-2xl font-bold text-slate-950">ダッシュボード</h2>
           <p className="text-sm text-slate-500">今日と今週の対応事項を確認します。</p>
         </div>
         <Link
@@ -59,26 +65,32 @@ export default async function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {summary.map((item) => (
-          <Card key={item.label}>
-            <CardContent className="flex items-center justify-between p-5">
-              <div>
-                <p className="text-sm text-slate-500">{item.label}</p>
-                <p className="text-3xl font-bold">{item.value}</p>
-              </div>
-              <item.icon className="h-6 w-6 text-blue-600" />
-            </CardContent>
-          </Card>
+          <Link key={item.label} href={item.href} className="group rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <Card className="h-full transition group-hover:-translate-y-0.5 group-hover:border-blue-200 group-hover:shadow-md">
+              <CardContent className="flex items-center justify-between p-5">
+                <div>
+                  <p className="text-sm text-slate-500">{item.label}</p>
+                  <p className="text-3xl font-bold">{item.value}</p>
+                </div>
+                <item.icon className="h-6 w-6 text-blue-600" />
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Today / This Week</CardTitle>
+            <CardTitle>今日・今週の予定</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {[...dashboard.weeklyInterviews, ...dashboard.weeklyProposedSlots].length === 0 ? (
-              <p className="text-sm text-slate-500">今週の面談・候補日時はありません。</p>
+            {[
+              ...dashboard.weeklyInterviews,
+              ...dashboard.weeklyProposedSlots,
+              ...dashboard.weeklyScheduleEvents
+            ].length === 0 ? (
+              <p className="text-sm text-slate-500">今週の予定・候補日時はありません。</p>
             ) : null}
             {dashboard.weeklyInterviews.map((interview) => {
               const application = interview.selectionStage.application;
@@ -122,12 +134,42 @@ export default async function DashboardPage() {
                 </Link>
               );
             })}
+            {dashboard.weeklyScheduleEvents.map((event) => {
+              const application = event.application;
+
+              return (
+                <Link
+                  key={event.id}
+                  href={application ? `/applications/${application.id}` : "/calendar"}
+                  className="block rounded-md border border-violet-200 bg-violet-50/50 p-3 hover:bg-violet-50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-950">{event.title}</p>
+                      <p className="text-sm text-slate-500">
+                        {application
+                          ? `${application.company.name} / ${application.position}`
+                          : "Google Calendarから取り込んだ予定"}
+                      </p>
+                    </div>
+                    <Badge className="border-violet-200 bg-violet-50 text-violet-700">
+                      取込済み
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {event.allDay
+                      ? `${event.startDate?.replaceAll("-", "/") ?? formatDate(event.startAt)} 終日`
+                      : formatTimeRange(event.startAt, event.endAt)}
+                  </p>
+                </Link>
+              );
+            })}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Waiting Reply</CardTitle>
+            <CardTitle>返信待ち</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {dashboard.waitingInterviews.length === 0 ? (
@@ -154,7 +196,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Upcoming Deadlines</CardTitle>
+            <CardTitle>近づいている期限</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {dashboard.upcomingDeadlines.length === 0 ? (
@@ -182,7 +224,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Conflict Alerts</CardTitle>
+            <CardTitle>日程の衝突</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {conflicts.length === 0 ? (
