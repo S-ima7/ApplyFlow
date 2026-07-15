@@ -47,6 +47,9 @@ export default async function EditApplicationPage({
               priority: application.priority,
               appliedAt: toDateInputValue(application.appliedAt),
               sourceUrl: application.sourceUrl ?? "",
+              locationText: application.locationText ?? "",
+              employmentTypeText: application.employmentTypeText ?? "",
+              compensationText: application.compensationText ?? "",
               note: application.note ?? ""
             }}
           />

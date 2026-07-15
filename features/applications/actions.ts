@@ -14,6 +14,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth-guard";
 import { DEFAULT_TIMEZONE } from "@/lib/date";
 import { prisma } from "@/lib/prisma";
+import { normalizeSourceUrl } from "@/lib/source-url";
 import { getConflictAlertsForTarget } from "@/features/conflict-detection/queries";
 import type { ScheduleItem } from "@/features/conflict-detection/types";
 import {
@@ -84,7 +85,10 @@ export async function createApplication(
         status: data.status,
         priority: data.priority,
         appliedAt: optionalDate(data.appliedAt),
-        sourceUrl: data.sourceUrl,
+        sourceUrl: data.sourceUrl ? normalizeSourceUrl(data.sourceUrl) : undefined,
+        locationText: data.locationText,
+        employmentTypeText: data.employmentTypeText,
+        compensationText: data.compensationText,
         note: data.note
       }
     });
@@ -155,7 +159,10 @@ export async function updateApplication(
         status: data.status,
         priority: data.priority,
         appliedAt: optionalDate(data.appliedAt),
-        sourceUrl: data.sourceUrl,
+        sourceUrl: data.sourceUrl ? normalizeSourceUrl(data.sourceUrl) : undefined,
+        locationText: data.locationText,
+        employmentTypeText: data.employmentTypeText,
+        compensationText: data.compensationText,
         note: data.note
       }
     }),
@@ -196,7 +203,9 @@ export async function deleteApplication(applicationId: string) {
       id: applicationId
     },
     data: {
-      deletedAt: new Date()
+      deletedAt: new Date(),
+      sourceKey: null,
+      captureIdempotencyKey: null
     }
   });
 

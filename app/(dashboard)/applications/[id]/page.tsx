@@ -61,6 +61,37 @@ export default async function ApplicationDetailPage({
         </CardContent>
       </Card>
 
+      {application.sourceUrl ||
+      application.locationText ||
+      application.employmentTypeText ||
+      application.compensationText ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>求人情報</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Metric label="勤務地" value={application.locationText ?? "-"} />
+            <Metric label="雇用形態" value={application.employmentTypeText ?? "-"} />
+            <Metric label="給与・報酬" value={application.compensationText ?? "-"} />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">取得元</p>
+              {application.sourceUrl ? (
+                <a
+                  href={application.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block text-sm font-semibold text-blue-600 hover:underline"
+                >
+                  {application.sourceSite ?? "求人ページ"}を開く
+                </a>
+              ) : (
+                <p className="mt-1 text-sm font-semibold text-slate-950">-</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
           <Card>

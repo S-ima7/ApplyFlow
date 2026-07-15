@@ -98,6 +98,9 @@ export const applicationSchema = z.object({
   priority: z.enum(priorityValues).default("MEDIUM"),
   appliedAt: optionalText,
   sourceUrl: optionalUrl,
+  locationText: optionalText.pipe(z.string().max(500).optional()),
+  employmentTypeText: optionalText.pipe(z.string().max(300).optional()),
+  compensationText: optionalText.pipe(z.string().max(500).optional()),
   note: optionalText
 });
 
