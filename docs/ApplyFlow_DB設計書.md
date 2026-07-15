@@ -1,6 +1,6 @@
-# ApplyFlow DB設計書 v1.1
+# ApplyFlow DB設計書 v1.3
 
-更新日: 2026-07-14
+更新日: 2026-07-15
 
 ## 1. 概要
 
@@ -12,9 +12,11 @@ User
  │              ├─ SelectionStage ─ Interview ─ ProposedSlot
  │              ├─ Deadline
  │              ├─ ActivityLog
- │              └─ ScheduleEvent (optional relation)
+ │              ├─ ScheduleEvent (optional relation)
+ │              └─ BrowserMessageImport ─ Interview (optional relation)
  ├─ ScheduleEvent
- └─ EmailImport ─ AiExtractionResult ─ Application (optional relation)
+ ├─ EmailImport ─ AiExtractionResult ─ Application (optional relation)
+ └─ BrowserExtensionToken
 ```
 
 ## 2. 認証モデル
@@ -47,9 +49,24 @@ Auth.js Prisma Adapter標準モデル。AccountにGoogle access token、refresh 
 | applicationType / route | Yes | 応募種別、経路 |
 | status / priority | Yes | 選考状態、優先度 |
 | appliedAt / sourceUrl / note | No | 付加情報 |
+| sourceSite / sourceJobId / sourceKey | No | ブラウザ拡張機能の媒体・求人識別子・重複キー |
+| locationText / employmentTypeText / compensationText | No | 求人ページから確認後に保存した原文 |
+| capturedAt / captureAdapterVersion | No | 抽出時刻・アダプターバージョン |
+| captureIdempotencyKey | No | 拡張機能APIの冪等キー |
 | deletedAt | No | 論理削除 |
 
 `userId,status`、`userId,priority`、`companyId`、`deletedAt`にインデックスを持つ。
+`(userId,sourceKey)`と`(userId,captureIdempotencyKey)`をuniqueとする。論理削除時は両キーをnullにし、同じ求人の再登録を許可する。
+
+### BrowserExtensionToken
+
+Chrome拡張機能専用のBearer Tokenを管理する。`tokenHash`にはSHA-256 digestだけを保存し、平文Tokenは発行直後に一度だけ表示する。`tokenPrefix`、`lastUsedAt`、任意の`expiresAt`、`revokedAt`を保持し、ユーザー単位で個別失効できる。
+
+### BrowserMessageImport
+
+企業メッセージから確認登録した面接イベントの重複防止レコード。`userId`、`applicationId`、任意の`interviewId`、`sourceSite`、`eventType`、`messageDigest`、`idempotencyKey`を保持する。メッセージ生本文やAI evidenceは保存しない。
+
+`(userId,idempotencyKey)`と`(userId,applicationId,messageDigest)`をuniqueとする。Application削除時はcascadeし、Interview削除時は`interviewId`をnullにする。
 
 ### SelectionStage
 
@@ -142,6 +159,7 @@ EmailImport削除時はcascadeする。Application削除時は抽出履歴を残
 - DeadlineType / DeadlineStatus: 期限種別と状態
 - ScheduleEventSource: Google Calendar、手動
 - ActivityAction: 応募・フェーズ・面談・候補・期限の操作履歴
+- BrowserMessageEventType: 新規・更新、日時変更、取消
 
 ## 7. 削除方針
 
@@ -149,6 +167,7 @@ EmailImport削除時はcascadeする。Application削除時は抽出履歴を残
 - User削除時は所有する業務データをcascade削除する。
 - CompanyはApplicationからrestrictされるため、参照中は削除できない。
 - 活動履歴とAI抽出履歴は監査・再確認のため、関連先削除後も可能な範囲で保持する。
+- BrowserMessageImportはApplicationとともに削除するが、保持中もメッセージ生本文を含まない。
 
 ## 8. タイムゾーン
 
@@ -164,6 +183,9 @@ EmailImport削除時はcascadeする。Application削除時は抽出履歴を残
 | `20260707102447_new_applyflow` | 応募管理コアスキーマ |
 | `20260710173000_add_email_import_ai_extraction` | EmailImport、AiExtractionResult |
 | `20260714170000_add_schedule_events_and_extraction_metadata` | ScheduleEvent、抽出モデル・プロンプト・確認値 |
+| `20260715120000_add_browser_extension` | Application求人取得項目、重複・冪等キー、BrowserExtensionToken |
+| `20260715130000_normalize_schedule_event_index_name` | PostgreSQLの識別子長制限で切り詰められたScheduleEvent unique index名を明示名へ統一 |
+| `20260715140000_add_browser_message_import` | 企業メッセージ登録の反映先・処理種別・digest・冪等キー |
 
 変更時は以下を実行する。
 
