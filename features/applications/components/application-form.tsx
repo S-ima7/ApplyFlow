@@ -51,6 +51,9 @@ export function ApplicationForm({ mode, application }: ApplicationFormProps) {
       priority: "MEDIUM",
       appliedAt: "",
       sourceUrl: "",
+      locationText: "",
+      employmentTypeText: "",
+      compensationText: "",
       note: ""
     }
   });
@@ -128,6 +131,15 @@ export function ApplicationForm({ mode, application }: ApplicationFormProps) {
         </Field>
         <Field label="求人URL" error={errors.sourceUrl?.message}>
           <Input type="url" placeholder="https://example.com/job" {...register("sourceUrl")} />
+        </Field>
+        <Field label="勤務地" error={errors.locationText?.message}>
+          <Input {...register("locationText")} />
+        </Field>
+        <Field label="雇用形態" error={errors.employmentTypeText?.message}>
+          <Input {...register("employmentTypeText")} />
+        </Field>
+        <Field label="給与・報酬" error={errors.compensationText?.message}>
+          <Input {...register("compensationText")} />
         </Field>
       </div>
       <Field label="メモ" error={errors.note?.message}>

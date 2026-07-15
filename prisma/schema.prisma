@@ -127,6 +127,12 @@ enum ActivityAction {
   OFFER_DECLINED
 }
 
+enum BrowserMessageEventType {
+  CREATE_OR_UPDATE
+  RESCHEDULE
+  CANCEL
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -140,16 +146,18 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  companies      Company[]
-  applications   Application[]
-  stages         SelectionStage[]
-  interviews     Interview[]
-  proposedSlots  ProposedSlot[]
-  deadlines      Deadline[]
-  activityLogs   ActivityLog[]
-  scheduleEvents ScheduleEvent[]
-  emailImports   EmailImport[]
-  aiExtractions  AiExtractionResult[]
+  companies              Company[]
+  applications           Application[]
+  stages                 SelectionStage[]
+  interviews             Interview[]
+  proposedSlots          ProposedSlot[]
+  deadlines              Deadline[]
+  activityLogs           ActivityLog[]
+  scheduleEvents         ScheduleEvent[]
+  emailImports           EmailImport[]
+  aiExtractions          AiExtractionResult[]
+  browserExtensionTokens BrowserExtensionToken[]
+  browserMessageImports  BrowserMessageImport[]
 }
 
 model Account {
@@ -208,20 +216,29 @@ model Company {
 }
 
 model Application {
-  id              String            @id @default(cuid())
-  userId          String
-  companyId       String
-  position        String
-  applicationType ApplicationType
-  route           ApplicationRoute
-  status          ApplicationStatus @default(DRAFT)
-  priority        Priority          @default(MEDIUM)
-  appliedAt       DateTime?
-  sourceUrl       String?
-  note            String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  deletedAt       DateTime?
+  id                    String            @id @default(cuid())
+  userId                String
+  companyId             String
+  position              String
+  applicationType       ApplicationType
+  route                 ApplicationRoute
+  status                ApplicationStatus @default(DRAFT)
+  priority              Priority          @default(MEDIUM)
+  appliedAt             DateTime?
+  sourceUrl             String?
+  note                  String?
+  sourceSite            String?
+  sourceJobId           String?
+  sourceKey             String?
+  locationText          String?
+  employmentTypeText    String?
+  compensationText      String?
+  capturedAt            DateTime?
+  captureAdapterVersion String?
+  captureIdempotencyKey String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  deletedAt             DateTime?
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
@@ -230,12 +247,52 @@ model Application {
   deadlines                Deadline[]
   activityLogs             ActivityLog[]
   scheduleEvents           ScheduleEvent[]
-  createdFromAiExtractions AiExtractionResult[] @relation("AiExtractionCreatedApplication")
+  createdFromAiExtractions AiExtractionResult[]   @relation("AiExtractionCreatedApplication")
+  browserMessageImports    BrowserMessageImport[]
 
+  @@unique([userId, sourceKey])
+  @@unique([userId, captureIdempotencyKey])
   @@index([userId, status])
   @@index([userId, priority])
   @@index([companyId])
   @@index([deletedAt])
+}
+
+model BrowserExtensionToken {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String    @default("Chrome extension")
+  tokenHash   String    @unique
+  tokenPrefix String
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+model BrowserMessageImport {
+  id             String                  @id @default(cuid())
+  userId         String
+  applicationId  String
+  interviewId    String?
+  sourceSite     String
+  eventType      BrowserMessageEventType
+  messageDigest  String
+  idempotencyKey String
+  createdAt      DateTime                @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interview   Interview?  @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, idempotencyKey])
+  @@unique([userId, applicationId, messageDigest])
+  @@index([applicationId, createdAt])
+  @@index([interviewId])
 }
 
 model SelectionStage {
@@ -283,7 +340,8 @@ model Interview {
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   selectionStage SelectionStage @relation(fields: [selectionStageId], references: [id], onDelete: Cascade)
 
-  proposedSlots ProposedSlot[]
+  proposedSlots         ProposedSlot[]
+  browserMessageImports BrowserMessageImport[]
 
   @@index([userId, status])
   @@index([selectionStageId])
@@ -381,7 +439,7 @@ model ScheduleEvent {
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, source, externalCalendarId, externalEventId])
+  @@unique([userId, source, externalCalendarId, externalEventId], map: "ScheduleEvent_external_event_key")
   @@index([userId, startAt])
   @@index([applicationId])
   @@index([deletedAt])

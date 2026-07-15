@@ -1,6 +1,6 @@
-# ApplyFlow アーキテクチャ設計書 v1.1
+# ApplyFlow アーキテクチャ設計書 v1.2
 
-更新日: 2026-07-14
+更新日: 2026-07-15
 
 ## 1. システム構成
 
@@ -12,6 +12,11 @@ Browser
       -> Google Calendar API (readonly)
       -> Gmail API (readonly)
       -> OpenAI Responses API
+
+Chrome Extension (Manifest V3)
+  -> Content Script / Shadow DOM
+      -> Extension Service Worker
+          -> Browser Extension Route Handlers -> Prisma Client -> PostgreSQL
 ```
 
 画面表示はServer Componentを基本とし、フォーム、カレンダー、外部API操作など対話が必要な部分だけClient Componentとする。データ更新はServer Actionへ集約する。
@@ -28,6 +33,8 @@ features/deadlines/     期限
 features/calendar/      統合カレンダー、Google予定取込
 features/conflict-detection/ 衝突検知
 features/email-import/  Gmail取込、AI抽出、確認登録
+features/browser-extension/ Token、API契約、設定UI
+browser-extension/      Manifest V3拡張機能本体とビルド
 lib/                    Google API、認証、日付、Prisma
 prisma/                 DBスキーマ、マイグレーション
 tests/                  Vitest
@@ -174,6 +181,38 @@ AI確認画面からの登録は次を1トランザクションで実行する�
 - OAuth token、OpenAI API keyをClient Componentへ渡さない。
 - 外部URLは新しいタブで開き、`rel=noreferrer`を付与する。
 - Gmail本文を永続化しない。
+- 拡張機能APIはWebセッションではなく個別失効可能なBearer Tokenで認証する。
+- 拡張機能TokenはDBへSHA-256 digestだけを保存し、Content Scriptから参照できない。
+- 拡張機能APIは媒体host、payload上限、入力schema、ユーザー所有権をサーバーで検証する。
+- 企業メッセージ生本文は明示同意した抽出要求のメモリ上だけで扱い、永続化・ログ出力しない。
+
+## 11.1 ブラウザ拡張機能フロー
+
+```text
+求人詳細で保存ボタン押下
+  -> 公開JSON-LD / 可視DOMを抽出
+  -> Service Workerが送信元hostを検証
+  -> /api/browser-extension/lookupで保存済み照合
+  -> ユーザーが確認・修正
+  -> /api/browser-extension/capturesへBearer Token + Idempotency-Keyで送信
+  -> Company再利用または作成 + Application + ActivityLogをtransaction保存
+```
+
+Content ScriptはTokenを保持せず、API通信はService Workerへ限定する。媒体権限は任意付与し、許可済み媒体だけContent Scriptを動的登録する。
+
+```text
+企業メッセージを選択して抽出ボタン押下
+  -> 選択本文とOpenAI送信への個別同意を確認
+  -> Service Workerが送信元hostを検証
+  -> /api/browser-extension/message-extractionsでstrict JSON Schema抽出
+  -> 会社名・ポジションを本人所有Application / Companyと照合
+  -> 完全一致は自動選択、表記ゆれは確認、一致なしは新規作成を初期選択
+  -> ユーザーが応募先・対象面接・日時・変更/取消を確認
+  -> /api/browser-extension/message-eventsへBearer Token + Idempotency-Keyで送信
+  -> 必要ならCompany / Applicationを作成し、SelectionStage / Interview / ProposedSlot / ActivityLog / BrowserMessageImportをtransaction更新
+```
+
+登録後は既存のApplication queryがInterviewとProposedSlotを取得するため、応募先詳細へ即時反映される。確定Interviewと未確定ProposedSlotは既存dashboard queryの対象であり、専用のダッシュボード複製データは持たない。
 
 ## 12. 品質保証
 
@@ -189,8 +228,11 @@ AI確認画面からの登録は次を1トランザクションで実行する�
 | 外部予定はサーバー再取得 | event IDからevents.get | クライアント送信日時を保存 | Calendar取込 | 改ざん・鮮度対策 |
 | AI結果は人が確認 | 確認画面から登録 | 抽出直後に自動登録 | メール取込 | 誤抽出リスク |
 | Gmail本文は非永続 | metadataと抽出JSONを保存 | raw bodyをDB保存 | Gmail取込 | プライバシー |
+| 企業メッセージは選択・同意・確認 | 選択本文を抽出し応募先を確認 | 画面全文の自動送信・自動登録 | ブラウザ拡張 | プライバシー、誤紐付け防止 |
 | ローカル日時はtimezone付き変換 | Asia/TokyoとしてUTC保存 | server timezoneで`new Date` | datetime-local入力 | 実行環境差異防止 |
 
 ## 14. 旧版移行
 
-v0.1の段階別将来構想は実装状況と不一致になったため廃止した。本書v1.1を現行アーキテクチャの正本とし、将来構想は「未実装」と明記した項目だけに限定する。
+v0.1の段階別将来構想は実装状況と不一致になったため廃止した。本書v1.2を現行アーキテクチャの正本とし、将来構想は「未実装」と明記した項目だけに限定する。
+
+v1.2ではChrome拡張機能、専用Bearer Token、Route Handler、動的ホスト権限を現行アーキテクチャへ追加した。

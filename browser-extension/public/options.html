@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ApplyFlow 拡張機能設定</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="eyebrow">APPLYFLOW</span>
+        <h1>ブラウザ拡張機能の設定</h1>
+        <p>本人管理下のApplyFlowと、利用する求人・企業メッセージ媒体だけを接続します。</p>
+      </header>
+      <form id="settings-form">
+        <section>
+          <h2>ApplyFlow接続</h2>
+          <label>ApplyFlow URL<input id="api-base-url" type="url" required placeholder="http://localhost:3000" /></label>
+          <label>拡張機能トークン<input id="api-token" type="password" autocomplete="off" placeholder="af_ext_..." /></label>
+          <p class="help">ApplyFlowの「設定 → ブラウザ拡張機能」で発行します。媒体ボタンの表示だけを確認する場合は空でも保存できます。</p>
+          <label>既定の応募種別<select id="default-application-type">
+            <option value="CAREER_CHANGE">転職</option><option value="JOB_HUNTING">就活</option>
+            <option value="INTERNSHIP">インターン</option><option value="FREELANCE">業務委託</option>
+            <option value="PART_TIME">アルバイト</option><option value="GRADUATE_SCHOOL">大学院</option>
+            <option value="OTHER">その他</option>
+          </select></label>
+        </section>
+        <section>
+          <h2>対応媒体</h2>
+          <p class="help">有効にした媒体だけ、Chromeがアクセス許可を確認します。</p>
+          <label class="check"><input id="adapter-green" type="checkbox" /><span><strong>Green</strong><small>求人保存・面接日時抽出ボタンを表示</small></span></label>
+          <label class="check"><input id="adapter-doda" type="checkbox" /><span><strong>doda</strong><small>求人保存・面接日時抽出ボタンを表示</small></span></label>
+        </section>
+        <div id="status" class="status" role="status" hidden></div>
+        <div class="actions">
+          <button id="reset-settings" class="secondary" type="button">ローカル設定を削除</button>
+          <button class="primary" type="submit">設定と権限を保存</button>
+        </div>
+      </form>
+      <aside>
+        <h2>データの扱い</h2>
+        <p>求人情報は保存操作まで送信しません。企業メッセージは選択・貼付した本文を確認し、同意した場合だけOpenAI APIへ送信します。メッセージ生本文はApplyFlowのDBへ保存しません。画像、Cookie、媒体の認証情報は取得・送信しません。</p>
+      </aside>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

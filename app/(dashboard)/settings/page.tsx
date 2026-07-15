@@ -5,11 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getGoogleCalendarConnectionStatus } from "@/lib/google-calendar";
 import { getGmailConnectionStatus } from "@/lib/gmail";
 import { requireUser } from "@/lib/auth-guard";
+import { BrowserExtensionSettings } from "@/features/browser-extension/components/browser-extension-settings";
+import { getBrowserExtensionTokens } from "@/features/browser-extension/queries";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const googleCalendar = await getGoogleCalendarConnectionStatus(user.id);
-  const gmail = await getGmailConnectionStatus(user.id);
+  const [googleCalendar, gmail, browserExtensionTokens] = await Promise.all([
+    getGoogleCalendarConnectionStatus(user.id),
+    getGmailConnectionStatus(user.id),
+    getBrowserExtensionTokens(user.id)
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -84,6 +89,21 @@ export default async function SettingsPage() {
               </form>
             ) : null}
           </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>ブラウザ拡張機能</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <BrowserExtensionSettings
+            tokens={browserExtensionTokens.map((token) => ({
+              id: token.id,
+              tokenPrefix: token.tokenPrefix,
+              createdAt: token.createdAt.toISOString(),
+              lastUsedAt: token.lastUsedAt?.toISOString() ?? null
+            }))}
+          />
         </CardContent>
       </Card>
     </div>
