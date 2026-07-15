@@ -17,6 +17,7 @@ const eslintConfig = [
       "next-env.d.ts",
       "node_modules/**",
       "coverage/**",
+      "browser-extension/dist/**",
       "prisma/generated/**"
     ]
   }
