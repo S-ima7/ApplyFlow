@@ -83,6 +83,7 @@ describe("mapGmailMessageSummary", () => {
       fromAddress: "recruiter@example.com",
       snippet: "interview schedule"
     });
+    expect(summary?.internalDate?.toISOString()).toBe(sentAt.toISOString());
     expect(summary?.sentAt?.toISOString()).toBe(sentAt.toISOString());
   });
 });

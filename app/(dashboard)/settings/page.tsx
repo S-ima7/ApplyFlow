@@ -7,13 +7,19 @@ import { getGmailConnectionStatus } from "@/lib/gmail";
 import { requireUser } from "@/lib/auth-guard";
 import { BrowserExtensionSettings } from "@/features/browser-extension/components/browser-extension-settings";
 import { getBrowserExtensionTokens } from "@/features/browser-extension/queries";
+import { EmailMonitorSettings } from "@/features/email-monitor/components/email-monitor-settings";
+import {
+  DEFAULT_EMAIL_MONITOR_QUERY,
+  getEmailMonitorOverview
+} from "@/features/email-monitor/config";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [googleCalendar, gmail, browserExtensionTokens] = await Promise.all([
+  const [googleCalendar, gmail, browserExtensionTokens, emailMonitor] = await Promise.all([
     getGoogleCalendarConnectionStatus(user.id),
     getGmailConnectionStatus(user.id),
-    getBrowserExtensionTokens(user.id)
+    getBrowserExtensionTokens(user.id),
+    getEmailMonitorOverview(user.id)
   ]);
 
   return (
@@ -30,6 +36,35 @@ export default async function SettingsPage() {
           <SettingRow label="ユーザー名" value={user.name ?? "-"} />
           <SettingRow label="メールアドレス" value={user.email ?? "-"} />
           <SettingRow label="タイムゾーン" value={user.timezone ?? "Asia/Tokyo"} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Gmail定期監視</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmailMonitorSettings
+            connected={gmail.status === "connected"}
+            initial={{
+              enabled: emailMonitor.config?.enabled ?? false,
+              gmailQuery:
+                emailMonitor.config?.gmailQuery ?? DEFAULT_EMAIL_MONITOR_QUERY,
+              consentedAt: emailMonitor.config?.consentedAt?.toISOString() ?? null,
+              lastRunAt: emailMonitor.config?.lastRunAt?.toISOString() ?? null,
+              lastSuccessAt:
+                emailMonitor.config?.lastSuccessAt?.toISOString() ?? null,
+              lastErrorMessage: emailMonitor.config?.lastErrorMessage ?? null,
+              counts: {
+                pending: emailMonitor.statusCounts.PENDING,
+                processing: emailMonitor.statusCounts.PROCESSING,
+                autoApplied: emailMonitor.statusCounts.AUTO_APPLIED,
+                reviewRequired: emailMonitor.statusCounts.REVIEW_REQUIRED,
+                ignored: emailMonitor.statusCounts.IGNORED,
+                retryWait: emailMonitor.statusCounts.RETRY_WAIT,
+                failed: emailMonitor.statusCounts.FAILED
+              }
+            }}
+          />
         </CardContent>
       </Card>
       <Card>

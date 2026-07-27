@@ -21,6 +21,23 @@ export async function getEmailExtractionForConfirmation(
           },
           position: true
         }
+      },
+      automationJob: {
+        select: {
+          status: true,
+          errorCode: true,
+          matchedApplication: {
+            select: {
+              id: true,
+              position: true,
+              company: {
+                select: {
+                  name: true
+                }
+              }
+            }
+          }
+        }
       }
     }
   });

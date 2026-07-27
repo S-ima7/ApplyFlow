@@ -26,10 +26,15 @@ describe("browser message extraction", () => {
       confidence: 0.92
     });
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.relevant).toBe(true);
+    }
   });
 
   it("requires eventType in the strict AI response contract", () => {
     expect(BROWSER_MESSAGE_EXTRACTION_JSON_SCHEMA.required).toContain("eventType");
+    expect(BROWSER_MESSAGE_EXTRACTION_JSON_SCHEMA.required).toContain("relevant");
+    expect(BROWSER_MESSAGE_EXTRACTION_JSON_SCHEMA.required).toContain("fieldConfidence");
     expect(BROWSER_MESSAGE_EXTRACTION_JSON_SCHEMA.properties.eventType.enum).toEqual([
       "CREATE_OR_UPDATE",
       "RESCHEDULE",

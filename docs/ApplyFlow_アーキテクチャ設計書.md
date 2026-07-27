@@ -1,6 +1,6 @@
-# ApplyFlow アーキテクチャ設計書 v1.2
+# ApplyFlow アーキテクチャ設計書 v1.4
 
-更新日: 2026-07-15
+更新日: 2026-07-27
 
 ## 1. システム構成
 
@@ -11,7 +11,14 @@ Browser
       -> Prisma Client -> PostgreSQL
       -> Google Calendar API (readonly)
       -> Gmail API (readonly)
-      -> OpenAI Responses API
+      -> Groq Responses API / OpenAI gpt-oss-120b
+
+Netlify Scheduled Function (15分)
+  -> internal signature
+  -> Netlify Background Function
+      -> Gmail polling
+      -> Email automation job
+      -> Prisma Client -> Neon PostgreSQL
 
 Chrome Extension (Manifest V3)
   -> Content Script / Shadow DOM
@@ -33,8 +40,10 @@ features/deadlines/     期限
 features/calendar/      統合カレンダー、Google予定取込
 features/conflict-detection/ 衝突検知
 features/email-import/  Gmail取込、AI抽出、確認登録
+features/email-monitor/ Gmail監視、job状態機械、安全判定、自動反映
 features/browser-extension/ Token、API契約、設定UI
 browser-extension/      Manifest V3拡張機能本体とビルド
+netlify/functions/      Scheduled / Background Function
 lib/                    Google API、認証、日付、Prisma
 prisma/                 DBスキーマ、マイグレーション
 tests/                  Vitest
@@ -130,7 +139,7 @@ userId + source + externalCalendarId + externalEventId
 
 ## 8. AI抽出
 
-OpenAI Responses APIのstrict JSON Schema出力を使用する。モデルは`OPENAI_MODEL`で切り替えられる。
+Groq Responses APIのstrict JSON Schema出力を使用する。既定モデルは`openai/gpt-oss-120b`、reasoning effortは`high`とする。有料OpenAI APIへのフォールバックは実装しない。
 
 プロンプトにはユーザータイムゾーン、処理基準日時、メール受信日時、件名、送信者、スニペット、最新本文、引用履歴を渡す。
 
@@ -140,8 +149,44 @@ OpenAI Responses APIのstrict JSON Schema出力を使用する。モデルは`OP
 - 開始日時 < 終了日時
 - stage typeはアプリのenumだけ許可
 - confidenceは0〜1
+- relevantとeventTypeは必須
+- 自動反映に使う全フィールドのfield confidenceは必須
 
-`AiExtractionResult`へ抽出JSON、総合confidence、モデル名、プロンプト版を保存する。確認後の入力は`reviewedJson`へ保存する。
+`AiExtractionResult`へ抽出JSON、総合confidence、モデル名、プロンプト版を保存する。AI応答のtoken usageは日次無料枠制御に使う。確認後の入力は`reviewedJson`へ保存する。
+
+## 8.1 Gmail監視フロー
+
+```text
+Scheduled Function (*/15 * * * *)
+  -> EMAIL_MONITOR_WORKER_SECRETで署名
+  -> Background Function
+      -> enabledなEmailMonitorConfigを列挙
+      -> query + after cursorでGmail messages.list
+      -> message IDをEmailImport / EmailAutomationJobへ永続化
+      -> 1件ずつ本文取得・AI抽出
+      -> decision policy
+          -> AUTO_APPLIED
+          -> REVIEW_REQUIRED
+          -> IGNORED
+          -> RETRY_WAIT / FAILED
+```
+
+初回有効化時に`monitoringSince`とcursorを現在時刻へ設定する。通常の検索には10分のoverlapを入れるが、取得後にGmail `internalDate >= monitoringSince`をミリ秒精度で再検証する。jobを永続化してからcursorを進める。Background Functionは一回最大25件を逐次処理し、日次180,000 token到達時は未処理jobを翌日へ残す。
+
+`EmailAutomationJob`はleaseとattemptを持ち、Gmail message IDと内容digestで冪等性を保証する。raw bodyはjob、error、logへ含めない。
+
+AI呼出し前に、JSON Schema・promptを含む実リクエストのUTF-8 byte数、サーバーフレーミング余裕、最大出力4,096 tokenから保守的な最大使用量を算出し、`AiDailyUsage`へSerializable transactionで予約する。成功時は実usageで精算し、応答不明の失敗は予約全量を使用済みとみなす。これにより入力サイズにかかわらず、Scheduled実行と「今すぐ実行」が重なっても日次上限を共有する。
+
+## 8.2 自動反映ポリシー
+
+既存のcompany / position正規化照合を共通利用し、一意なApplication完全一致を必須にする。総合confidenceと変更対象フィールドconfidenceがすべて0.90以上の場合だけtransactionを開始する。
+
+- `CREATE_OR_UPDATE`: 一意な既存応募内で、安全に特定できるstage / interview / slot / deadlineだけを作成または更新する。
+- `RESCHEDULE`: 同じstage typeの有効Interviewが一件だけの場合に限り更新する。
+- `CANCEL`: 自動変更せず確認待ちにする。
+- 新規応募、曖昧一致、手入力データとの競合: 自動変更せず確認待ちにする。
+
+変更前後は`EmailAutomationChange`へ、利用者向け概要は`ActivityLog`へ保存する。どちらにもメール本文を含めない。
 
 ## 9. 応募登録トランザクション
 
@@ -169,7 +214,9 @@ AI確認画面からの登録は次を1トランザクションで実行する�
 | Calendar API無効 | Google Cloud Consoleへの導線表示 |
 | Google event削除済み | 取込失敗として画面表示 |
 | Gmail取得失敗 | メール一覧上に再試行可能なエラー表示 |
-| OpenAI timeout / 429 | 原因別メッセージを表示 |
+| Groq timeout / 429 | 手動取込は原因別表示、監視jobはRETRY_WAIT |
+| AI日次上限 | 未処理jobを翌日へ繰り越し |
+| Gmail監視のtoken失効 | configを停止し再認証を表示 |
 | JSON schema不一致 | 登録せず形式エラーを表示 |
 | DB登録失敗 | トランザクションをrollback |
 
@@ -178,7 +225,7 @@ AI確認画面からの登録は次を1トランザクションで実行する�
 - Server Action冒頭で`requireUser()`を実行する。
 - DB queryは必ず`userId`を条件に含める。
 - 外部イベントと応募先の所有権をサーバーで検証する。
-- OAuth token、OpenAI API keyをClient Componentへ渡さない。
+- OAuth token、Groq API key、worker secretをClient Componentへ渡さない。
 - 外部URLは新しいタブで開き、`rel=noreferrer`を付与する。
 - Gmail本文を永続化しない。
 - 拡張機能APIはWebセッションではなく個別失効可能なBearer Tokenで認証する。
@@ -202,7 +249,7 @@ Content ScriptはTokenを保持せず、API通信はService Workerへ限定す�
 
 ```text
 企業メッセージを選択して抽出ボタン押下
-  -> 選択本文とOpenAI送信への個別同意を確認
+  -> 選択本文とGroq上のgpt-oss送信への個別同意を確認
   -> Service Workerが送信元hostを検証
   -> /api/browser-extension/message-extractionsでstrict JSON Schema抽出
   -> 会社名・ポジションを本人所有Application / Companyと照合
@@ -226,7 +273,7 @@ Content ScriptはTokenを保持せず、API通信はService Workerへ限定す�
 |---|---|---|---|---|
 | Google連携はreadonly | Google予定をApplyFlowへコピー | Google予定をAPIで更新 | Calendar/Gmail連携全体 | OAuth scope、外部データ保護 |
 | 外部予定はサーバー再取得 | event IDからevents.get | クライアント送信日時を保存 | Calendar取込 | 改ざん・鮮度対策 |
-| AI結果は人が確認 | 確認画面から登録 | 抽出直後に自動登録 | メール取込 | 誤抽出リスク |
+| AI結果の自動反映は高信頼・既存一意一致だけ | 90%以上かつ一意な既存応募を更新 | 新規応募・取消・曖昧一致を自動反映 | Gmail監視 | 誤抽出リスク |
 | Gmail本文は非永続 | metadataと抽出JSONを保存 | raw bodyをDB保存 | Gmail取込 | プライバシー |
 | 企業メッセージは選択・同意・確認 | 選択本文を抽出し応募先を確認 | 画面全文の自動送信・自動登録 | ブラウザ拡張 | プライバシー、誤紐付け防止 |
 | ローカル日時はtimezone付き変換 | Asia/TokyoとしてUTC保存 | server timezoneで`new Date` | datetime-local入力 | 実行環境差異防止 |
@@ -236,3 +283,5 @@ Content ScriptはTokenを保持せず、API通信はService Workerへ限定す�
 v0.1の段階別将来構想は実装状況と不一致になったため廃止した。本書v1.2を現行アーキテクチャの正本とし、将来構想は「未実装」と明記した項目だけに限定する。
 
 v1.2ではChrome拡張機能、専用Bearer Token、Route Handler、動的ホスト権限を現行アーキテクチャへ追加した。
+
+v1.4ではNetlify Scheduled / Background Function、Neon、EmailMonitorConfig / EmailAutomationJob / EmailAutomationChange、Groq上のgpt-oss-120bを追加した。

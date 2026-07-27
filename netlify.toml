@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Prisma migrations are an explicit release step. They must not run in deploy
+# previews or as part of the Netlify build.

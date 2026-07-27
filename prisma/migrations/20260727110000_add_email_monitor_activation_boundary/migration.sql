@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "EmailMonitorConfig" ADD COLUMN "monitoringSince" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

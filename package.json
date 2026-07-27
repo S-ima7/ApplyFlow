@@ -14,6 +14,7 @@
     "extension:build": "node browser-extension/scripts/build.mjs clean && tsc -p browser-extension/tsconfig.json && node browser-extension/scripts/build.mjs copy",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {

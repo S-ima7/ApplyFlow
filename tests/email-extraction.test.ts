@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMAIL_EXTRACTION_JSON_SCHEMA,
+  estimateEmailExtractionMaxTokens,
   extractTextFromOpenAIResponse,
   normalizeEmailExtraction
 } from "@/features/email-import/extraction";
+import { emailAiExtractionSchema } from "@/features/email-import/schema";
 
 function validExtraction() {
   return {
@@ -34,6 +37,14 @@ describe("normalizeEmailExtraction", () => {
   it("accepts valid extraction JSON", () => {
     const result = normalizeEmailExtraction(validExtraction());
     expect(result.ok).toBe(true);
+
+    if (result.ok) {
+      expect(result.data).toMatchObject({
+        relevant: true,
+        eventType: "CREATE_OR_UPDATE"
+      });
+      expect(result.metadata.usage.totalTokens).toBe(0);
+    }
   });
 
   it("rejects datetime without explicit timezone", () => {
@@ -42,6 +53,49 @@ describe("normalizeEmailExtraction", () => {
 
     const result = normalizeEmailExtraction(value);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("strict AI extraction contract", () => {
+  it("includes large multibyte email input in the preflight token ceiling", () => {
+    const email = {
+      id: "message-1",
+      threadId: "thread-1",
+      subject: "選考日程",
+      fromAddress: "recruiter@example.com",
+      sentAt: new Date("2026-07-27T00:00:00.000Z"),
+      internalDate: new Date("2026-07-27T00:00:00.000Z"),
+      snippet: "一次面接の日程です",
+      bodyText: "面接候補日時です。".repeat(1_000)
+    };
+
+    expect(
+      estimateEmailExtractionMaxTokens(
+        email,
+        "Asia/Tokyo",
+        new Date("2026-07-27T00:00:00.000Z")
+      )
+    ).toBeGreaterThan(20_000);
+  });
+
+  it("requires relevance, event type, field confidences, and evidence", () => {
+    expect(EMAIL_EXTRACTION_JSON_SCHEMA.required).toEqual(
+      expect.arrayContaining([
+        "relevant",
+        "eventType",
+        "fieldConfidence",
+        "evidence"
+      ])
+    );
+    expect(EMAIL_EXTRACTION_JSON_SCHEMA.properties.eventType.enum).toEqual([
+      "CREATE_OR_UPDATE",
+      "RESCHEDULE",
+      "CANCEL",
+      "INFORMATION_ONLY"
+    ]);
+    expect(
+      emailAiExtractionSchema.safeParse(validExtraction()).success
+    ).toBe(false);
   });
 });
 
