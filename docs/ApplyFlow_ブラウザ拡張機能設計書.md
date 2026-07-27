@@ -95,7 +95,7 @@ API障害時は入力を自動保存しない。ユーザーが画面を開い�
 | 重複単位 | `userId + sourceKey`、正規化`sourceUrl` | 媒体求人ID、なければ正規化URLをSHA-256で安定キー化し、Web画面から同じURLを登録済みの場合も検出する |
 | 冪等単位 | `userId + captureIdempotencyKey` | 二重クリックや同一リクエスト再送で新規作成しない |
 | メッセージ取得 | 選択範囲またはユーザー貼付だけ | DOMセレクター変更と不要な個人情報送信を避ける |
-| AI送信 | 抽出ボタン押下前に個別同意 | 選択本文がOpenAI APIへ送信されることを明示する |
+| AI送信 | 抽出ボタン押下前に個別同意 | 選択本文がGroq上のgpt-ossへ送信されることを明示する |
 | AI結果 | 応募先・対象面接・日時を確認後に登録 | 誤抽出や誤紐付けを自動反映しない |
 | 本文保持 | DB・ActivityLogへ保存しない | 登録重複防止には`sourceSite + trim済み本文`のSHA-256だけを使う |
 | 日時変更 | 進行中の対象面接があれば必須選択して現在日時を置換。対象がなければ`CREATE_OR_UPDATE`へ補正 | 選べないリストを必須にせず、初回取り込み時も最新日時を登録できる |
@@ -117,7 +117,7 @@ flowchart LR
     SW -->|Bearer Token / HTTPS| API[Next.js Extension API]
     API --> TOK[(BrowserExtensionToken)]
     API --> APP[(Company / Application / Interview)]
-    API --> AI[OpenAI Responses API]
+    API --> AI[Groq Responses API / gpt-oss-120b]
     APP --> WEB[ApplyFlow 応募詳細]
     SW -->|新規タブ| WEB
     OPT[Options Page] -->|任意権限・設定| SW
@@ -258,7 +258,7 @@ sequenceDiagram
 ### 9.1 企業メッセージから面接登録
 
 1. 利用者が企業から届いた1メッセージを選択し、「面接日時を抽出」を押す。選択しにくい場合はパネルを開いたまま媒体画面で選択し、「現在の選択を取り込む」を押すか、テキスト欄へ貼り付ける。
-2. ドロワーは送信対象本文を表示し、OpenAI API処理への同意を要求する。
+2. ドロワーは送信対象本文を表示し、Groq上のgpt-oss処理への同意を要求する。
 3. APIは`CREATE_OR_UPDATE`、`RESCHEDULE`、`CANCEL`、選考種別、確定日時、候補日時、面接URL、担当者、confidenceをstrict JSON Schemaで抽出する。
 4. 会社名・ポジションを正規化して本人所有のApplication / Companyと照合し、完全一致、表記ゆれ候補、一致なしを判定する。
 5. 完全一致は既存応募先を初期選択する。表記ゆれ候補は未選択で止め、既存への統合または新規作成を利用者へ確認する。一致しない場合は抽出値から新規応募先を初期選択する。
@@ -267,7 +267,7 @@ sequenceDiagram
 
 会社名の完全一致はNFKC、英字小文字化、空白・記号除去後の一致とする。表記ゆれ候補は、さらに`株式会社`、`有限会社`、`合同会社`、`Inc.`、`Corp.`、`Ltd.`などの法人格を除いた名称が一致する場合に限定する。編集距離による広い曖昧一致は誤統合を避けるため行わない。
 
-選択本文はService WorkerとAPIメモリを経由してOpenAI Responses APIへ送るが、PostgreSQL、Chrome storage、ActivityLog、サーバーログへ保存しない。AIのevidenceは確認レスポンスにだけ含まれ、登録APIへ送らない。
+選択本文はService WorkerとAPIメモリを経由してGroq Responses API上のgpt-ossへ送るが、PostgreSQL、Chrome storage、ActivityLog、サーバーログへ保存しない。AIのevidenceは確認レスポンスにだけ含まれ、登録APIへ送らない。
 
 ## 10. 認証・Tokenライフサイクル
 
@@ -337,7 +337,7 @@ Headerに16〜100文字の`Idempotency-Key`を必須とする。bodyは以下を
 
 `POST /api/browser-extension/message-extractions`
 
-bodyは媒体、現在URL、選択本文、ページタイトル、取得時刻、`consentToAiProcessing: true`を受け付ける。サーバーはToken所有者のtimezoneを使い、OpenAI Responses APIのstrict JSON Schemaで次を返す。
+bodyは媒体、現在URL、選択本文、ページタイトル、取得時刻、`consentToAiProcessing: true`を受け付ける。サーバーはToken所有者のtimezoneを使い、Groq Responses APIのstrict JSON Schemaで次を返す。
 
 - `eventType`: `CREATE_OR_UPDATE` / `RESCHEDULE` / `CANCEL`
 - 会社名、ポジション、選考種別、選考名

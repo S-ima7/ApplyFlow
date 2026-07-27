@@ -10,7 +10,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
 import { getGmailMessage } from "@/lib/gmail";
-import { extractEmailWithOpenAI } from "@/features/email-import/extraction";
+import { extractEmailWithAi } from "@/features/email-import/extraction";
 import {
   emailImportConfirmSchema,
   type EmailImportConfirmInput
@@ -72,7 +72,7 @@ export async function importAndExtractEmail(
     }
   });
 
-  const extraction = await extractEmailWithOpenAI(
+  const extraction = await extractEmailWithAi(
     gmail.gmailMessage,
     user.timezone ?? "Asia/Tokyo"
   );

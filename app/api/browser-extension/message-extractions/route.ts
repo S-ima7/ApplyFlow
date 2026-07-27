@@ -12,7 +12,7 @@ import {
   buildBrowserMessageDigest,
   validateSourceHost
 } from "@/features/browser-extension/contracts";
-import { extractBrowserMessageWithOpenAI } from "@/features/browser-extension/message-extraction";
+import { extractBrowserMessageWithAi } from "@/features/browser-extension/message-extraction";
 import { prisma } from "@/lib/prisma";
 
 export function OPTIONS() {
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const extraction = await extractBrowserMessageWithOpenAI(
+    const extraction = await extractBrowserMessageWithAi(
       parsed.data,
       authentication.user.timezone ?? "Asia/Tokyo"
     );

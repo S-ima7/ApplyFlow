@@ -27,6 +27,7 @@ export type GmailMessageSummary = {
   subject?: string;
   fromAddress?: string;
   snippet?: string;
+  internalDate?: Date;
   sentAt?: Date;
 };
 
@@ -255,6 +256,7 @@ export function mapGmailMessageSummary(message: GmailApiMessage): GmailMessageSu
   const subject = getGmailHeader(message.payload, "Subject");
   const fromAddress = getGmailHeader(message.payload, "From");
   const dateHeader = getGmailHeader(message.payload, "Date");
+  const internalDate = parseGmailInternalDate(message.internalDate);
 
   return {
     id: message.id,
@@ -262,7 +264,8 @@ export function mapGmailMessageSummary(message: GmailApiMessage): GmailMessageSu
     subject,
     fromAddress,
     snippet: message.snippet,
-    sentAt: parseGmailDate(message.internalDate, dateHeader)
+    internalDate,
+    sentAt: internalDate ?? parseGmailDateHeader(dateHeader)
   };
 }
 
@@ -292,7 +295,7 @@ function getGmailHeader(payload: GmailApiPayload | undefined, name: string) {
   return header?.value?.trim() || undefined;
 }
 
-function parseGmailDate(internalDate?: string, dateHeader?: string) {
+function parseGmailInternalDate(internalDate?: string) {
   if (internalDate) {
     const fromInternalDate = new Date(Number(internalDate));
 
@@ -300,7 +303,10 @@ function parseGmailDate(internalDate?: string, dateHeader?: string) {
       return fromInternalDate;
     }
   }
+  return undefined;
+}
 
+function parseGmailDateHeader(dateHeader?: string) {
   if (!dateHeader) {
     return undefined;
   }

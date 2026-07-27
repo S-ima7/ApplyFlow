@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum ApplicationType {
@@ -133,6 +134,16 @@ enum BrowserMessageEventType {
   CANCEL
 }
 
+enum EmailAutomationJobStatus {
+  PENDING
+  PROCESSING
+  AUTO_APPLIED
+  REVIEW_REQUIRED
+  IGNORED
+  RETRY_WAIT
+  FAILED
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -158,6 +169,9 @@ model User {
   aiExtractions          AiExtractionResult[]
   browserExtensionTokens BrowserExtensionToken[]
   browserMessageImports  BrowserMessageImport[]
+  emailMonitorConfig     EmailMonitorConfig?
+  emailAutomationJobs    EmailAutomationJob[]
+  emailAutomationChanges EmailAutomationChange[]
 }
 
 model Account {
@@ -247,8 +261,10 @@ model Application {
   deadlines                Deadline[]
   activityLogs             ActivityLog[]
   scheduleEvents           ScheduleEvent[]
-  createdFromAiExtractions AiExtractionResult[]   @relation("AiExtractionCreatedApplication")
+  createdFromAiExtractions AiExtractionResult[]    @relation("AiExtractionCreatedApplication")
   browserMessageImports    BrowserMessageImport[]
+  emailAutomationJobs      EmailAutomationJob[]
+  emailAutomationChanges   EmailAutomationChange[]
 
   @@unique([userId, sourceKey])
   @@unique([userId, captureIdempotencyKey])
@@ -340,8 +356,9 @@ model Interview {
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   selectionStage SelectionStage @relation(fields: [selectionStageId], references: [id], onDelete: Cascade)
 
-  proposedSlots         ProposedSlot[]
-  browserMessageImports BrowserMessageImport[]
+  proposedSlots          ProposedSlot[]
+  browserMessageImports  BrowserMessageImport[]
+  emailAutomationChanges EmailAutomationChange[]
 
   @@index([userId, status])
   @@index([selectionStageId])
@@ -459,6 +476,7 @@ model EmailImport {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   aiExtractionResults AiExtractionResult[]
+  automationJob       EmailAutomationJob?
 
   @@unique([userId, gmailMessageId])
   @@index([userId, importedAt])
@@ -477,11 +495,101 @@ model AiExtractionResult {
   createdApplicationId String?
   createdAt            DateTime  @default(now())
 
-  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emailImport        EmailImport  @relation(fields: [emailImportId], references: [id], onDelete: Cascade)
-  createdApplication Application? @relation("AiExtractionCreatedApplication", fields: [createdApplicationId], references: [id], onDelete: SetNull)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailImport        EmailImport         @relation(fields: [emailImportId], references: [id], onDelete: Cascade)
+  createdApplication Application?        @relation("AiExtractionCreatedApplication", fields: [createdApplicationId], references: [id], onDelete: SetNull)
+  automationJob      EmailAutomationJob?
 
   @@index([userId, createdAt])
   @@index([emailImportId])
   @@index([createdApplicationId])
+}
+
+model EmailMonitorConfig {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  enabled          Boolean   @default(false)
+  gmailQuery       String
+  consentedAt      DateTime?
+  monitoringSince  DateTime  @default(now())
+  cursorAt         DateTime  @default(now())
+  scanUpperBoundAt DateTime?
+  scanPageToken    String?
+  lastRunAt        DateTime?
+  lastSuccessAt    DateTime?
+  lastErrorCode    String?
+  lastErrorMessage String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, cursorAt])
+}
+
+model EmailAutomationJob {
+  id                   String                   @id @default(cuid())
+  userId               String
+  emailImportId        String                   @unique
+  gmailMessageId       String
+  messageDigest        String
+  status               EmailAutomationJobStatus @default(PENDING)
+  attempts             Int                      @default(0)
+  leaseUntil           DateTime?
+  nextAttemptAt        DateTime?
+  errorCode            String?
+  errorMessage         String?
+  aiInputTokens        Int                      @default(0)
+  aiOutputTokens       Int                      @default(0)
+  aiTotalTokens        Int                      @default(0)
+  aiReservedTokens     Int                      @default(0)
+  aiReservationDate    String?
+  aiProcessedAt        DateTime?
+  extractionResultId   String?                  @unique
+  matchedApplicationId String?
+  processedAt          DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailImport        EmailImport            @relation(fields: [emailImportId], references: [id], onDelete: Cascade)
+  extractionResult   AiExtractionResult?    @relation(fields: [extractionResultId], references: [id], onDelete: SetNull)
+  matchedApplication Application?           @relation(fields: [matchedApplicationId], references: [id], onDelete: SetNull)
+  change             EmailAutomationChange?
+
+  @@unique([userId, gmailMessageId, messageDigest])
+  @@index([status, nextAttemptAt, leaseUntil])
+  @@index([aiProcessedAt])
+  @@index([userId, createdAt])
+  @@index([matchedApplicationId])
+}
+
+model EmailAutomationChange {
+  id            String   @id @default(cuid())
+  jobId         String   @unique
+  userId        String
+  applicationId String
+  interviewId   String?
+  beforeJson    Json
+  afterJson     Json
+  createdAt     DateTime @default(now())
+
+  job         EmailAutomationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  interview   Interview?         @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([applicationId, createdAt])
+  @@index([interviewId, createdAt])
+}
+
+model AiDailyUsage {
+  provider       String
+  usageDate      String
+  usedTokens     Int      @default(0)
+  reservedTokens Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@id([provider, usageDate])
 }

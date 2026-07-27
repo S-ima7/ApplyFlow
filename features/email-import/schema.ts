@@ -32,7 +32,16 @@ const isoDateTimeWithTimezone = z
 const nullableString = z.string().trim().nullable();
 const nullableIsoDateTime = isoDateTimeWithTimezone.nullable();
 
+export const emailExtractionEventTypes = [
+  "CREATE_OR_UPDATE",
+  "RESCHEDULE",
+  "CANCEL",
+  "INFORMATION_ONLY"
+] as const;
+
 export const emailExtractionFieldKeys = [
+  "relevant",
+  "eventType",
   "companyName",
   "position",
   "stageType",
@@ -89,7 +98,7 @@ export const extractedConfirmedSlotSchema = z
     }
   );
 
-export const emailExtractionSchema = z.object({
+const emailExtractionCoreSchema = z.object({
   companyName: nullableString,
   position: nullableString,
   stageType: z.enum(stageTypeValues).nullable(),
@@ -100,9 +109,25 @@ export const emailExtractionSchema = z.object({
   offerAcceptanceDeadline: nullableIsoDateTime,
   meetingUrl: nullableString,
   interviewerName: nullableString,
-  confidence: z.number().min(0).max(1),
-  fieldConfidence: fieldConfidenceSchema.optional(),
-  evidence: extractionEvidenceSchema.optional()
+  confidence: z.number().min(0).max(1)
+});
+
+/**
+ * Stored results created before automated monitoring did not include decision fields.
+ * Defaults keep those records readable while new provider responses use the strict schema below.
+ */
+export const emailExtractionSchema = emailExtractionCoreSchema.extend({
+  relevant: z.boolean().default(true),
+  eventType: z.enum(emailExtractionEventTypes).default("CREATE_OR_UPDATE"),
+  fieldConfidence: fieldConfidenceSchema.partial().optional(),
+  evidence: extractionEvidenceSchema.partial().optional()
+});
+
+export const emailAiExtractionSchema = emailExtractionCoreSchema.extend({
+  relevant: z.boolean(),
+  eventType: z.enum(emailExtractionEventTypes),
+  fieldConfidence: fieldConfidenceSchema,
+  evidence: extractionEvidenceSchema
 });
 
 const localDateTime = z.string().trim();

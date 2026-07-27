@@ -6,6 +6,9 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmailMessageList } from "@/features/email-import/components/email-message-list";
+import { EmailMonitorJobList } from "@/features/email-monitor/components/email-monitor-job-list";
+import { getEmailMonitorOverview } from "@/features/email-monitor/config";
+import { getRecentEmailAutomationJobs } from "@/features/email-monitor/queries";
 import {
   buildEmailImportSearchHref,
   decodeGmailPageTokens
@@ -27,7 +30,11 @@ export default async function EmailImportPage({
   const query = params.q?.trim() ?? "";
   const pageTokens = decodeGmailPageTokens(params.cursor);
   const pageToken = pageTokens.at(-1);
-  const gmail = await getGmailConnectionStatus(user.id);
+  const [gmail, emailMonitor, recentJobs] = await Promise.all([
+    getGmailConnectionStatus(user.id),
+    getEmailMonitorOverview(user.id),
+    getRecentEmailAutomationJobs(user.id)
+  ]);
   const searchResult =
     query && gmail.status === "connected"
       ? await searchGmailMessages(user.id, query, {
@@ -72,6 +79,47 @@ export default async function EmailImportPage({
           </CardContent>
         </Card>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>定期監視</CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge variant={emailMonitor.config?.enabled ? "success" : "muted"}>
+                {emailMonitor.config?.enabled ? "監視中" : "停止中"}
+              </Badge>
+              <Link
+                href="/settings"
+                className={buttonVariants({ variant: "secondary", size: "sm" })}
+              >
+                監視設定
+              </Link>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <EmailMonitorJobList
+            jobs={recentJobs.map((job) => ({
+              id: job.id,
+              status: job.status,
+              errorMessage: job.errorMessage,
+              processedAt: job.processedAt?.toISOString() ?? null,
+              createdAt: job.createdAt.toISOString(),
+              extractionResultId: job.extractionResultId,
+              subject: job.emailImport.subject,
+              fromAddress: job.emailImport.fromAddress,
+              sentAt: job.emailImport.sentAt?.toISOString() ?? null,
+              matchedApplication: job.matchedApplication
+                ? {
+                    id: job.matchedApplication.id,
+                    companyName: job.matchedApplication.company.name,
+                    position: job.matchedApplication.position
+                  }
+                : null
+            }))}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
