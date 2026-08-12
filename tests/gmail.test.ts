@@ -28,7 +28,7 @@ describe("hasGmailReadonlyScope", () => {
 });
 
 describe("Gmail search pagination", () => {
-  it("forwards the Gmail page token and uses the configured page size", () => {
+  it("searches only the current inbox with the configured pagination", () => {
     const url = buildGmailMessageListUrl("面接", {
       maxResults: GMAIL_SEARCH_PAGE_SIZE,
       pageToken: "next-token"
@@ -37,6 +37,7 @@ describe("Gmail search pagination", () => {
     expect(url.searchParams.get("q")).toBe("面接");
     expect(url.searchParams.get("maxResults")).toBe("25");
     expect(url.searchParams.get("pageToken")).toBe("next-token");
+    expect(url.searchParams.getAll("labelIds")).toEqual(["INBOX"]);
   });
 
   it("round-trips the page-token history used by previous navigation", () => {

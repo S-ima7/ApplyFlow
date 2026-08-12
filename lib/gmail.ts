@@ -422,6 +422,7 @@ export function buildGmailMessageListUrl(
   url.searchParams.set("q", query);
   url.searchParams.set("maxResults", String(maxResults));
   url.searchParams.set("includeSpamTrash", "false");
+  url.searchParams.set("labelIds", "INBOX");
 
   if (options.pageToken) {
     url.searchParams.set("pageToken", options.pageToken);
