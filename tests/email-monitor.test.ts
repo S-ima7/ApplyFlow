@@ -23,8 +23,8 @@ import {
   nextUtcDay
 } from "@/features/email-monitor/state-machine";
 import {
-  AI_TOKEN_RESERVATION_PER_REQUEST,
-  canReserveAiTokens,
+  AI_NEURON_RESERVATION_PER_REQUEST,
+  canReserveAiNeurons,
   toUtcUsageDate
 } from "@/features/email-monitor/token-budget";
 
@@ -381,12 +381,12 @@ describe("email monitor config transitions", () => {
   });
 });
 
-describe("email monitor daily AI budget", () => {
+describe("email monitor daily AI neuron budget", () => {
   it("counts in-flight reservations before allowing another AI request", () => {
-    expect(canReserveAiTokens(140_000, 20_000, 180_000)).toBe(true);
-    expect(canReserveAiTokens(140_001, 20_000, 180_000)).toBe(false);
-    expect(canReserveAiTokens(140_000, 20_000, 180_000, 20_001)).toBe(false);
-    expect(AI_TOKEN_RESERVATION_PER_REQUEST).toBe(20_000);
+    expect(canReserveAiNeurons(7_000, 1_500, 10_000)).toBe(true);
+    expect(canReserveAiNeurons(7_001, 1_500, 10_000)).toBe(false);
+    expect(canReserveAiNeurons(7_000, 1_500, 10_000, 1_501)).toBe(false);
+    expect(AI_NEURON_RESERVATION_PER_REQUEST).toBe(1_500);
   });
 
   it("uses a UTC date key for the shared provider ledger", () => {

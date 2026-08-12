@@ -1,7 +1,7 @@
 import { EmailAutomationJobStatus } from "@prisma/client";
 import { DEFAULT_EMAIL_MONITOR_QUERY } from "@/features/email-monitor/constants";
 import { dispatchEmailMonitorBackground } from "@/features/email-monitor/internal-auth";
-import { consumeAiTokenReservationAsUsedInTransaction } from "@/features/email-monitor/token-budget";
+import { consumeAiNeuronReservationAsUsedInTransaction } from "@/features/email-monitor/token-budget";
 import { prisma } from "@/lib/prisma";
 
 export type SaveEmailMonitorConfigInput = {
@@ -77,12 +77,12 @@ export async function saveEmailMonitorConfig(
               EmailAutomationJobStatus.RETRY_WAIT
             ]
           },
-          aiReservedTokens: { gt: 0 }
+          aiReservedNeurons: { gt: 0 }
         },
         select: { id: true }
       });
       for (const job of affectedJobs) {
-        await consumeAiTokenReservationAsUsedInTransaction(tx, job.id);
+        await consumeAiNeuronReservationAsUsedInTransaction(tx, job.id);
       }
       await tx.emailAutomationJob.updateMany({
         where: {

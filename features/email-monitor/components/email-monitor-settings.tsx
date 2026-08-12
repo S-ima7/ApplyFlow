@@ -104,7 +104,7 @@ export function EmailMonitorSettings({
           onChange={(event) => setConsent(event.target.checked)}
         />
         <span className="text-sm text-amber-950">
-          一致したメール本文をGroq上のgpt-ossへ送信し、総合・変更対象項目の信頼度が90%以上かつ一意な既存応募だけを自動更新することに同意します。本文はApplyFlowのDBやログへ保存しません。
+          一致したメール本文をCloudflare Workers AI上の@cf/openai/gpt-oss-120bへ送信し、総合・変更対象項目の信頼度が90%以上かつ一意な既存応募だけを自動更新することに同意します。本文はCloudflareの保存サービス、ApplyFlowのDBやログへ保存しません。
         </span>
       </label>
 
