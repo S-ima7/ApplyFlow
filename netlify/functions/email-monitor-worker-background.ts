@@ -4,6 +4,7 @@ import {
   verifyEmailMonitorWorkerSignature
 } from "@/features/email-monitor/internal-auth";
 import { runEmailMonitorBatch } from "@/features/email-monitor/worker";
+import { runManualEmailImportJob } from "@/features/email-import/manual-worker";
 
 export default async function handler(request: Request) {
   if (request.method !== "POST") {
@@ -27,7 +28,14 @@ export default async function handler(request: Request) {
   }
 
   try {
-    await runEmailMonitorBatch({ userId: parsed.userId });
+    if (parsed.manualJobId && parsed.userId) {
+      await runManualEmailImportJob({
+        jobId: parsed.manualJobId,
+        userId: parsed.userId
+      });
+    } else {
+      await runEmailMonitorBatch({ userId: parsed.userId });
+    }
     return new Response(null, { status: 202 });
   } catch {
     console.error("Email monitor background worker failed");
@@ -35,8 +43,8 @@ export default async function handler(request: Request) {
   }
 }
 
-function parseWorkerRequest(body: string):
-  | { ok: true; userId?: string }
+export function parseWorkerRequest(body: string):
+  | { ok: true; userId?: string; manualJobId?: string }
   | { ok: false } {
   try {
     const value = JSON.parse(body) as unknown;
@@ -44,10 +52,11 @@ function parseWorkerRequest(body: string):
       return { ok: false };
     }
     const keys = Object.keys(value);
-    if (keys.some((key) => key !== "userId")) {
+    if (keys.some((key) => key !== "userId" && key !== "manualJobId")) {
       return { ok: false };
     }
     const userId = (value as { userId?: unknown }).userId;
+    const manualJobId = (value as { manualJobId?: unknown }).manualJobId;
     if (
       userId !== undefined &&
       (typeof userId !== "string" ||
@@ -56,9 +65,19 @@ function parseWorkerRequest(body: string):
     ) {
       return { ok: false };
     }
+    if (
+      manualJobId !== undefined &&
+      (typeof manualJobId !== "string" ||
+        !manualJobId.trim() ||
+        manualJobId.length > 100 ||
+        typeof userId !== "string")
+    ) {
+      return { ok: false };
+    }
     return {
       ok: true,
-      ...(typeof userId === "string" ? { userId } : {})
+      ...(typeof userId === "string" ? { userId } : {}),
+      ...(typeof manualJobId === "string" ? { manualJobId } : {})
     };
   } catch {
     return { ok: false };

@@ -175,6 +175,8 @@ Scheduled Function (*/15 * * * *)
 
 `EmailAutomationJob`はleaseとattemptを持ち、Gmail message IDと内容digestで冪等性を保証する。raw bodyはjob、error、logへ含めない。
 
+手動Gmail取込も同じ`EmailImport / EmailAutomationJob`を利用する。同期Server ActionはGmail本文を一時取得してdigestを作り、署名付きBackground FunctionへJob IDを渡した時点で応答する。Background Functionが本文を再取得してdigestを照合し、AI抽出、自動反映または確認待ちへの振り分けまで実行する。画面は軽量なServer ActionでJob状態だけをポーリングする。これによりNetlifyの同期実行上限からAI推論時間を分離し、本文をDBへ保存せず再実行の冪等性も維持する。
+
 AI呼出し前に、JSON Schema・promptを含む実リクエストのUTF-8 byte数、サーバーフレーミング余裕、最大出力4,096 tokenから保守的な最大使用量を算出し、`AiDailyUsage`へSerializable transactionで予約する。成功時は実usageで精算し、応答不明の失敗は予約全量を使用済みとみなす。これにより入力サイズにかかわらず、Scheduled実行と「今すぐ実行」が重なっても日次上限を共有する。
 
 ## 8.2 自動反映ポリシー
