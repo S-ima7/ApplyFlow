@@ -49,7 +49,7 @@ export default async function EmailImportPage({
         <div>
           <h2 className="text-2xl font-bold text-slate-950">Gmail取り込み</h2>
           <p className="text-sm text-slate-500">
-            選考メールを検索し、AI抽出結果を確認してから登録します。
+            選考メールを検索し、確信度の高い内容は自動反映、例外だけ確認します。
           </p>
         </div>
         <Badge variant={gmail.status === "connected" ? "success" : "warning"}>

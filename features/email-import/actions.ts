@@ -1,21 +1,22 @@
 "use server";
 
-import {
-  ActivityAction,
-  DeadlineStatus,
-  Prisma
-} from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
 import { getGmailMessage } from "@/lib/gmail";
 import { extractEmailWithAi } from "@/features/email-import/extraction";
+import { tryAutoCreateEmailImportApplication } from "@/features/email-import/automation";
+import { decideAndApplyEmailImportAutomation } from "@/features/email-monitor/automation";
 import {
+  emailAiExtractionSchema,
+  emailExtractionSchema,
   emailImportConfirmSchema,
   type EmailImportConfirmInput
 } from "@/features/email-import/schema";
-import { buildEmailImportRegistrationData } from "@/features/email-import/registration";
+import { createEmailImportApplication } from "@/features/email-import/registration";
+import { getEmailImportApplicationResolution } from "@/features/email-import/queries";
 
 export type EmailImportActionResult<T = unknown> =
   | { ok: true; data?: T; message?: string }
@@ -35,7 +36,9 @@ function failFromZod(error: z.ZodError): EmailImportActionResult<never> {
 
 export async function importAndExtractEmail(
   gmailMessageId: string
-): Promise<EmailImportActionResult<{ extractionId: string }>> {
+): Promise<
+  EmailImportActionResult<{ extractionId: string; applicationId?: string }>
+> {
   const user = await requireUser();
   const gmail = await getGmailMessage(user.id, gmailMessageId);
 
@@ -92,14 +95,56 @@ export async function importAndExtractEmail(
     }
   });
 
+  const timezone = user.timezone ?? "Asia/Tokyo";
+  const automationExtraction = emailAiExtractionSchema.safeParse(
+    extraction.data
+  );
+  const existingApplicationDecision = automationExtraction.success
+    ? await decideAndApplyEmailImportAutomation({
+        emailImportId: emailImport.id,
+        extractionResultId: created.id,
+        userId: user.id,
+        userTimezone: timezone,
+        extraction: automationExtraction.data
+      })
+    : null;
+  const existingApplicationId =
+    existingApplicationDecision?.action === "AUTO_APPLY"
+      ? existingApplicationDecision.applicationId
+      : existingApplicationDecision?.action === "UNCHANGED"
+        ? existingApplicationDecision.applicationId
+        : null;
+  const createdApplication = existingApplicationId || !automationExtraction.success
+    ? null
+    : await tryAutoCreateEmailImportApplication({
+        userId: user.id,
+        timezone,
+        emailImportId: emailImport.id,
+        extractionResultId: created.id,
+        extraction: automationExtraction.data
+      });
+  const applicationId =
+    existingApplicationId ?? createdApplication?.applicationId;
+
   revalidatePath("/email-import");
+  if (applicationId) {
+    revalidatePath("/dashboard");
+    revalidatePath("/applications");
+    revalidatePath(`/applications/${applicationId}`);
+    revalidatePath("/calendar");
+    revalidatePath("/waiting");
+    revalidatePath("/deadlines");
+  }
 
   return {
     ok: true,
     data: {
-      extractionId: created.id
+      extractionId: created.id,
+      ...(applicationId ? { applicationId } : {})
     },
-    message: "メールから情報を抽出しました"
+    message: applicationId
+      ? "メールから応募情報を自動反映しました"
+      : "メールから情報を抽出しました"
   };
 }
 
@@ -141,95 +186,68 @@ export async function confirmEmailImportRegistration(
     };
   }
 
-  const data = parsed.data;
-  const registration = buildEmailImportRegistrationData(
-    data,
-    user.timezone ?? "Asia/Tokyo"
+  const sourceExtraction = emailExtractionSchema.safeParse(existing.extractedJson);
+  if (!sourceExtraction.success) {
+    return {
+      ok: false,
+      message: "保存済みの抽出結果を検証できません。メールを再抽出してください"
+    };
+  }
+  if (sourceExtraction.data.eventType !== "CREATE_OR_UPDATE") {
+    return {
+      ok: false,
+      message: "日程変更・取消は新しい応募として登録できません"
+    };
+  }
+  const sourceResolution = await getEmailImportApplicationResolution(
+    user.id,
+    sourceExtraction.data
   );
+  if (
+    sourceResolution.resolution !== "CREATE_NEW" &&
+    sourceResolution.resolution !== "CREATE_WITH_EXISTING_COMPANY"
+  ) {
+    return {
+      ok: false,
+      message: "抽出結果に既存応募の候補があります。応募詳細から確認してください"
+    };
+  }
+  const applicationResolution = await getEmailImportApplicationResolution(
+    user.id,
+    parsed.data
+  );
+  if (
+    applicationResolution.resolution !== "CREATE_NEW" &&
+    applicationResolution.resolution !== "CREATE_WITH_EXISTING_COMPANY"
+  ) {
+    return {
+      ok: false,
+      message: "既存応募の候補があります。応募詳細から確認してください"
+    };
+  }
 
   const application = await prisma.$transaction(async (tx) => {
-    const company = await tx.company.create({
-      data: {
-        userId: user.id,
-        name: data.companyName
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "EmailImport"
+      WHERE "id" = ${existing.emailImportId} AND "userId" = ${user.id}
+      FOR UPDATE
+    `;
+    const duplicate = await tx.aiExtractionResult.findFirst({
+      where: {
+        emailImportId: existing.emailImportId,
+        createdApplicationId: { not: null }
+      },
+      select: {
+        createdApplication: true
       }
     });
+    if (duplicate?.createdApplication) return duplicate.createdApplication;
 
-    const createdApplication = await tx.application.create({
-      data: {
-        userId: user.id,
-        companyId: company.id,
-        position: data.position,
-        applicationType: data.applicationType,
-        route: data.route,
-        status: registration.applicationStatus,
-        priority: data.priority,
-        note: data.note
-      }
-    });
-
-    const stage = await tx.selectionStage.create({
-      data: {
-        userId: user.id,
-        applicationId: createdApplication.id,
-        type: data.stageType,
-        name: data.stageName,
-        status: registration.stageStatus,
-        order: 1,
-        scheduledAt: registration.confirmedSlot?.startAt
-      }
-    });
-
-    const interview = await tx.interview.create({
-      data: {
-        userId: user.id,
-        selectionStageId: stage.id,
-        status: registration.interviewStatus,
-        title: data.stageName,
-        meetingUrl: data.meetingUrl,
-        interviewerName: data.interviewerName,
-        confirmedStartAt: registration.confirmedSlot?.startAt,
-        confirmedEndAt: registration.confirmedSlot?.endAt
-      }
-    });
-
-    if (registration.proposedSlots.length > 0) {
-      await tx.proposedSlot.createMany({
-        data: registration.proposedSlots.map((slot) => ({
-          userId: user.id,
-          interviewId: interview.id,
-          startAt: slot.startAt,
-          endAt: slot.endAt,
-          timezone: slot.timezone,
-          status: slot.status,
-          source: "gmail",
-          note: slot.note
-        }))
-      });
-    }
-
-    if (registration.deadlines.length > 0) {
-      await tx.deadline.createMany({
-        data: registration.deadlines.map((deadline) => ({
-          userId: user.id,
-          applicationId: createdApplication.id,
-          type: deadline.type,
-          status: DeadlineStatus.OPEN,
-          title: deadline.title,
-          dueAt: deadline.dueAt
-        }))
-      });
-    }
-
-    await tx.activityLog.createMany({
-      data: buildActivityLogs(
-        user.id,
-        createdApplication.id,
-        data.companyName,
-        data.position,
-        registration.proposedSlots.length,
-        registration.deadlines.length
-      )
+    const createdApplication = await createEmailImportApplication(tx, {
+      userId: user.id,
+      timezone: user.timezone ?? "Asia/Tokyo",
+      data: parsed.data
     });
 
     await tx.aiExtractionResult.update({
@@ -237,7 +255,7 @@ export async function confirmEmailImportRegistration(
         id: existing.id
       },
       data: {
-        reviewedJson: data as Prisma.InputJsonValue,
+        reviewedJson: parsed.data as Prisma.InputJsonValue,
         confirmedAt: new Date(),
         createdApplicationId: createdApplication.id
       }
@@ -261,59 +279,4 @@ export async function confirmEmailImportRegistration(
     },
     message: "メールから応募情報を登録しました"
   };
-}
-
-function buildActivityLogs(
-  userId: string,
-  applicationId: string,
-  companyName: string,
-  position: string,
-  proposedSlotCount: number,
-  deadlineCount: number
-) {
-  const logs: Array<{
-    userId: string;
-    applicationId: string;
-    action: ActivityAction;
-    message: string;
-  }> = [
-    {
-      userId,
-      applicationId,
-      action: ActivityAction.APPLICATION_CREATED,
-      message: `Gmailから ${companyName} / ${position} を登録しました`
-    },
-    {
-      userId,
-      applicationId,
-      action: ActivityAction.STAGE_CREATED,
-      message: "メール抽出から選考フェーズを追加しました"
-    },
-    {
-      userId,
-      applicationId,
-      action: ActivityAction.INTERVIEW_CREATED,
-      message: "メール抽出から面談を追加しました"
-    }
-  ];
-
-  if (proposedSlotCount > 0) {
-    logs.push({
-      userId,
-      applicationId,
-      action: ActivityAction.PROPOSED_SLOT_CREATED,
-      message: `メール抽出から候補日時を${proposedSlotCount}件追加しました`
-    });
-  }
-
-  if (deadlineCount > 0) {
-    logs.push({
-      userId,
-      applicationId,
-      action: ActivityAction.DEADLINE_CREATED,
-      message: `メール抽出から期限を${deadlineCount}件追加しました`
-    });
-  }
-
-  return logs;
 }

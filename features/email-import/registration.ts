@@ -1,11 +1,15 @@
 import {
+  ActivityAction,
   ApplicationStatus,
+  DeadlineStatus,
   DeadlineType,
   InterviewStatus,
+  Prisma,
   ProposedSlotStatus,
   StageStatus
 } from "@prisma/client";
 import type { EmailImportConfirmInput } from "@/features/email-import/schema";
+import { isExactCompanyName } from "@/features/browser-extension/application-matching";
 import { parseDateTimeInTimezone } from "@/lib/date";
 
 export type EmailImportRegistrationData = {
@@ -107,6 +111,133 @@ export function buildEmailImportRegistrationData(
     proposedSlots: [],
     deadlines
   };
+}
+
+export async function createEmailImportApplication(
+  tx: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    timezone: string;
+    data: EmailImportConfirmInput;
+    slotSource?: string;
+  }
+) {
+  const registration = buildEmailImportRegistrationData(
+    input.data,
+    input.timezone
+  );
+  const companies = await tx.company.findMany({
+    where: { userId: input.userId },
+    orderBy: { createdAt: "asc" }
+  });
+  const company =
+    companies.find((candidate) =>
+      isExactCompanyName(candidate.name, input.data.companyName)
+    ) ??
+    (await tx.company.create({
+      data: { userId: input.userId, name: input.data.companyName }
+    }));
+  const application = await tx.application.create({
+    data: {
+      userId: input.userId,
+      companyId: company.id,
+      position: input.data.position,
+      applicationType: input.data.applicationType,
+      route: input.data.route,
+      status: registration.applicationStatus,
+      priority: input.data.priority,
+      note: input.data.note
+    }
+  });
+  const stage = await tx.selectionStage.create({
+    data: {
+      userId: input.userId,
+      applicationId: application.id,
+      type: input.data.stageType,
+      name: input.data.stageName,
+      status: registration.stageStatus,
+      order: 1,
+      scheduledAt: registration.confirmedSlot?.startAt
+    }
+  });
+  const interview = await tx.interview.create({
+    data: {
+      userId: input.userId,
+      selectionStageId: stage.id,
+      status: registration.interviewStatus,
+      title: input.data.stageName,
+      meetingUrl: input.data.meetingUrl,
+      interviewerName: input.data.interviewerName,
+      confirmedStartAt: registration.confirmedSlot?.startAt,
+      confirmedEndAt: registration.confirmedSlot?.endAt
+    }
+  });
+
+  if (registration.proposedSlots.length > 0) {
+    await tx.proposedSlot.createMany({
+      data: registration.proposedSlots.map((slot) => ({
+        userId: input.userId,
+        interviewId: interview.id,
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+        timezone: slot.timezone,
+        status: slot.status,
+        source: input.slotSource ?? "gmail",
+        note: slot.note
+      }))
+    });
+  }
+  if (registration.deadlines.length > 0) {
+    await tx.deadline.createMany({
+      data: registration.deadlines.map((deadline) => ({
+        userId: input.userId,
+        applicationId: application.id,
+        type: deadline.type,
+        status: DeadlineStatus.OPEN,
+        title: deadline.title,
+        dueAt: deadline.dueAt
+      }))
+    });
+  }
+
+  const logs = [
+    {
+      userId: input.userId,
+      applicationId: application.id,
+      action: ActivityAction.APPLICATION_CREATED,
+      message: `Gmailから ${input.data.companyName} / ${input.data.position} を登録しました`
+    },
+    {
+      userId: input.userId,
+      applicationId: application.id,
+      action: ActivityAction.STAGE_CREATED,
+      message: "メール抽出から選考フェーズを追加しました"
+    },
+    {
+      userId: input.userId,
+      applicationId: application.id,
+      action: ActivityAction.INTERVIEW_CREATED,
+      message: "メール抽出から面談を追加しました"
+    },
+    ...(registration.proposedSlots.length > 0
+      ? [{
+          userId: input.userId,
+          applicationId: application.id,
+          action: ActivityAction.PROPOSED_SLOT_CREATED,
+          message: `メール抽出から候補日時を${registration.proposedSlots.length}件追加しました`
+        }]
+      : []),
+    ...(registration.deadlines.length > 0
+      ? [{
+          userId: input.userId,
+          applicationId: application.id,
+          action: ActivityAction.DEADLINE_CREATED,
+          message: `メール抽出から期限を${registration.deadlines.length}件追加しました`
+        }]
+      : [])
+  ];
+  await tx.activityLog.createMany({ data: logs });
+  return application;
 }
 
 function requireDate(value: string, timezone: string) {

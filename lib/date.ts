@@ -143,6 +143,15 @@ export function toDateTimeLocalValue(value: Date | string | null | undefined) {
   return format(new Date(value), "yyyy-MM-dd'T'HH:mm");
 }
 
+export function toDateTimeLocalValueInTimezone(
+  value: Date | string | null | undefined,
+  timezone: string
+) {
+  if (!value) return "";
+
+  return formatDateTimeInTimezone(value, timezone).replaceAll("/", "-").replace(" ", "T");
+}
+
 function getTimezoneOffset(date: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
