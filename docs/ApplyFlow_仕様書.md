@@ -17,7 +17,7 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - Google Calendar readonly連携、予定表示、衝突検知
 - Google Calendar予定のアプリ内予定への取り込み
 - Gmail readonly連携、検索、ページング、本文取得
-- Groq上のOpenAI gpt-oss-120bによるメール情報抽出
+- Cloudflare Workers AI上の`@cf/openai/gpt-oss-120b`によるメール情報抽出
 - 抽出内容の確認・修正後の応募情報登録
 - Gmail検索条件に合う新着メールの15分間隔監視
 - 一意な既存応募への高信頼な選考情報の自動反映
@@ -140,8 +140,8 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - Google連携はCalendar/Gmailともreadonlyスコープとする。
 - Gmail本文はDBへ保存しない。
 - APIキーとOAuthトークンはクライアントへ公開しない。
-- Gmail本文は処理中のメモリからGroq上のgpt-ossへ送信する。DBとログへ保存しない。
-- GroqはZero Data Retentionを有効化し、有料OpenAI APIへフォールバックしない。
+- Gmail本文は処理中のメモリからCloudflare Workers AI上の`@cf/openai/gpt-oss-120b`へ送信する。Cloudflareの保存サービス、DB、ログへ保存しない。
+- Cloudflare Workers AI Freeの1日10,000 Neuronsを超えた場合は翌日へ繰り越し、有料AI APIやWorkers Paidへフォールバックしない。
 - ブラウザ拡張機能は専用Tokenで認証し、サーバーにはSHA-256 digestだけを保存する。
 - 拡張機能TokenはContent Scriptへ渡さず、求人本文、Cookie、媒体認証情報を取得しない。
 - 企業メッセージは利用者が選択し、個別同意した本文だけをAI抽出時に送信する。生本文はDB、Chrome storage、ログへ保存しない。
@@ -194,4 +194,4 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - AI抽出は総合confidenceだけでなく項目別confidenceと根拠を扱う。
 - v1.2で、本人操作・確認を前提としたGreen・doda Chrome拡張機能を実装済みスコープへ追加した。
 - v1.3で、企業メッセージから面接の確定・候補・変更・取消を確認登録する機能を追加した。
-- v1.4で、Gmailの15分間隔監視、高信頼な既存応募への限定自動反映、Groq上のgpt-oss-120b、Netlify / Neon無料デプロイ構成を追加した。
+- v1.4で、Gmailの15分間隔監視、高信頼な既存応募への限定自動反映、Cloudflare Workers AI上の`@cf/openai/gpt-oss-120b`、Netlify / Neon無料デプロイ構成を追加した。

@@ -11,7 +11,7 @@ Browser
       -> Prisma Client -> PostgreSQL
       -> Google Calendar API (readonly)
       -> Gmail API (readonly)
-      -> Groq Responses API / OpenAI gpt-oss-120b
+      -> Cloudflare Workers AI REST API / @cf/openai/gpt-oss-120b
 
 Netlify Scheduled Function (15分)
   -> internal signature
@@ -139,7 +139,7 @@ userId + source + externalCalendarId + externalEventId
 
 ## 8. AI抽出
 
-Groq Responses APIのstrict JSON Schema出力を使用する。既定モデルは`openai/gpt-oss-120b`、reasoning effortは`high`とする。有料OpenAI APIへのフォールバックは実装しない。
+Cloudflare Workers AI Responses APIへstrict JSON Schemaを要求し、返却JSONをZodで再検証する。Cloudflareの[JSON Mode](https://developers.cloudflare.com/workers-ai/features/json-mode/)はSchema準拠を保証しないため、検証失敗時は登録も自動反映も行わない。既定モデルは`@cf/openai/gpt-oss-120b`、reasoning effortは`high`とする。有料AI APIへのフォールバックは実装しない。
 
 プロンプトにはユーザータイムゾーン、処理基準日時、メール受信日時、件名、送信者、スニペット、最新本文、引用履歴を渡す。
 
@@ -214,7 +214,7 @@ AI確認画面からの登録は次を1トランザクションで実行する�
 | Calendar API無効 | Google Cloud Consoleへの導線表示 |
 | Google event削除済み | 取込失敗として画面表示 |
 | Gmail取得失敗 | メール一覧上に再試行可能なエラー表示 |
-| Groq timeout / 429 | 手動取込は原因別表示、監視jobはRETRY_WAIT |
+| Cloudflare Workers AI timeout / 429 | 手動取込は原因別表示、監視jobはRETRY_WAIT |
 | AI日次上限 | 未処理jobを翌日へ繰り越し |
 | Gmail監視のtoken失効 | configを停止し再認証を表示 |
 | JSON schema不一致 | 登録せず形式エラーを表示 |
@@ -225,7 +225,7 @@ AI確認画面からの登録は次を1トランザクションで実行する�
 - Server Action冒頭で`requireUser()`を実行する。
 - DB queryは必ず`userId`を条件に含める。
 - 外部イベントと応募先の所有権をサーバーで検証する。
-- OAuth token、Groq API key、worker secretをClient Componentへ渡さない。
+- OAuth token、Cloudflare API token、worker secretをClient Componentへ渡さない。
 - 外部URLは新しいタブで開き、`rel=noreferrer`を付与する。
 - Gmail本文を永続化しない。
 - 拡張機能APIはWebセッションではなく個別失効可能なBearer Tokenで認証する。
@@ -249,7 +249,7 @@ Content ScriptはTokenを保持せず、API通信はService Workerへ限定す�
 
 ```text
 企業メッセージを選択して抽出ボタン押下
-  -> 選択本文とGroq上のgpt-oss送信への個別同意を確認
+  -> 選択本文とCloudflare Workers AI上のgpt-oss送信への個別同意を確認
   -> Service Workerが送信元hostを検証
   -> /api/browser-extension/message-extractionsでstrict JSON Schema抽出
   -> 会社名・ポジションを本人所有Application / Companyと照合
@@ -284,4 +284,4 @@ v0.1の段階別将来構想は実装状況と不一致になったため廃止�
 
 v1.2ではChrome拡張機能、専用Bearer Token、Route Handler、動的ホスト権限を現行アーキテクチャへ追加した。
 
-v1.4ではNetlify Scheduled / Background Function、Neon、EmailMonitorConfig / EmailAutomationJob / EmailAutomationChange、Groq上のgpt-oss-120bを追加した。
+v1.4ではNetlify Scheduled / Background Function、Neon、EmailMonitorConfig / EmailAutomationJob / EmailAutomationChange、Cloudflare Workers AI上の`@cf/openai/gpt-oss-120b`を追加した。

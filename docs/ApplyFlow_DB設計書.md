@@ -192,7 +192,7 @@ Job削除時はcascadeする。Application削除時は自動変更履歴もcasca
 
 ### AiDailyUsage
 
-Groq API key全体の日次token使用量と処理中予約量をUTC日単位で保持する。`(provider,usageDate)`を主キーとし、AI呼出し前に実リクエスト全体のUTF-8 byte数、サーバーフレーミング余裕、最大出力tokenから求めた保守的な上限をSerializable transactionで予約する。成功時は実使用量で精算し、応答が不明な失敗やworker停止は予約量全体を使用済みとして安全側に計上する。
+Cloudflare Workers AIアカウント全体の日次Neuron使用量と処理中予約量をUTC日単位で保持する。`(provider,usageDate)`を主キーとし、AI呼出し前に実リクエスト全体のUTF-8 byte数、サーバーフレーミング余裕、最大出力tokenからモデル公表値で換算した保守的なNeuron上限をSerializable transactionで予約する。成功時は実使用量で精算し、応答が不明な失敗やworker停止は予約量全体を使用済みとして安全側に計上する。
 
 ## 6. 主要enum
 
@@ -235,7 +235,8 @@ Groq API key全体の日次token使用量と処理中予約量をUTC日単位で
 | `20260727090000_add_email_monitor_automation` | Gmail監視設定、automation job、変更前後、Neon direct URL |
 | `20260727100000_add_email_monitor_ai_usage_timestamp` | AI日次無料枠を正確に集計する処理日時 |
 | `20260727110000_add_email_monitor_activation_boundary` | 同一秒を含め有効化以前のメールを除外する境界 |
-| `20260727120000_add_ai_daily_usage_budget` | 並行worker対応の日次token予約・使用量ledger |
+| `20260727120000_add_ai_daily_usage_budget` | 並行worker対応の日次token予約・使用量ledger（旧Groq用） |
+| `20260812090000_add_cloudflare_neuron_budget` | Cloudflare Workers AI用のNeuron予約・使用量列を追加し、旧token列はロールバック互換のため保持 |
 
 変更時は以下を実行する。
 
