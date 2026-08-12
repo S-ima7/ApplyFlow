@@ -8,12 +8,12 @@ import {
   type EmailExtraction
 } from "@/features/email-import/schema";
 import {
-  estimateStructuredAiTokenCeiling,
+  estimateStructuredAiUsageCeiling,
   extractTextFromAiResponse,
   requestStructuredAi,
   type AiClientError,
   type AiUsage,
-  type GroqResponsePayload
+  type CloudflareResponsePayload
 } from "@/lib/ai/responses";
 import type { GmailFullMessage } from "@/lib/gmail";
 
@@ -24,7 +24,7 @@ export type EmailExtractionResult =
       ok: true;
       data: EmailExtraction;
       metadata: {
-        provider: "groq" | "stored";
+        provider: "cloudflare-workers-ai" | "stored";
         model: string;
         promptVersion: string;
         usage: AiUsage;
@@ -210,12 +210,12 @@ export async function extractEmailWithAi(
   };
 }
 
-export function estimateEmailExtractionMaxTokens(
+export function estimateEmailExtractionUsageCeiling(
   email: GmailFullMessage,
   timezone = "Asia/Tokyo",
   referenceNow = new Date()
 ) {
-  return estimateStructuredAiTokenCeiling(
+  return estimateStructuredAiUsageCeiling(
     buildEmailAiRequest(email, timezone, referenceNow)
   );
 }
@@ -242,7 +242,7 @@ export const extractEmailWithOpenAI = extractEmailWithAi;
  * @deprecated Use extractTextFromAiResponse from the shared AI client.
  */
 export const extractTextFromOpenAIResponse = (
-  data: GroqResponsePayload
+  data: CloudflareResponsePayload
 ) => extractTextFromAiResponse(data);
 
 export function buildExtractionPrompt(

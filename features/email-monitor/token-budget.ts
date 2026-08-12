@@ -2,22 +2,24 @@ import {
   EmailAutomationJobStatus,
   Prisma
 } from "@prisma/client";
-import { getEmailMonitorDailyTokenBudget } from "@/features/email-monitor/constants";
+import { getEmailMonitorDailyNeuronBudget } from "@/features/email-monitor/constants";
+import { AI_PROVIDER } from "@/lib/ai/responses";
 import { prisma } from "@/lib/prisma";
 
-const AI_BUDGET_PROVIDER = "groq";
-export const AI_TOKEN_RESERVATION_PER_REQUEST = 20_000;
+export const AI_NEURON_RESERVATION_PER_REQUEST = 1_500;
 
-export async function reserveAiTokenBudget(
+export async function reserveAiNeuronBudget(
   jobId: string,
   now: Date,
-  requestedTokens = AI_TOKEN_RESERVATION_PER_REQUEST
+  requestedNeurons = AI_NEURON_RESERVATION_PER_REQUEST
 ) {
-  const normalizedRequestedTokens = normalizeRequestedTokens(requestedTokens);
-  const dailyBudget = getEmailMonitorDailyTokenBudget();
+  const normalizedRequestedNeurons = normalizeRequestedNeurons(
+    requestedNeurons
+  );
+  const dailyBudget = getEmailMonitorDailyNeuronBudget();
   if (
-    normalizedRequestedTokens === null ||
-    normalizedRequestedTokens > dailyBudget
+    normalizedRequestedNeurons === null ||
+    normalizedRequestedNeurons > dailyBudget
   ) {
     return false;
   }
@@ -38,11 +40,11 @@ export async function reserveAiTokenBudget(
     const [job] = await tx.$queryRaw<
       Array<{
         status: EmailAutomationJobStatus;
-        aiReservedTokens: number;
-        aiReservationDate: string | null;
+        aiReservedNeurons: number;
+        aiNeuronReservationDate: string | null;
       }>
     >`
-      SELECT "status", "aiReservedTokens", "aiReservationDate"
+      SELECT "status", "aiReservedNeurons", "aiNeuronReservationDate"
       FROM "EmailAutomationJob"
       WHERE "id" = ${jobId}
       FOR UPDATE
@@ -56,12 +58,12 @@ export async function reserveAiTokenBudget(
       return false;
     }
 
-    if (job.aiReservedTokens > 0 && job.aiReservationDate) {
+    if (job.aiReservedNeurons > 0 && job.aiNeuronReservationDate) {
       await consumeReservation(tx, {
         jobId,
-        usageDate: job.aiReservationDate,
-        reservedTokens: job.aiReservedTokens,
-        chargedTokens: job.aiReservedTokens
+        usageDate: job.aiNeuronReservationDate,
+        reservedNeurons: job.aiReservedNeurons,
+        chargedNeurons: job.aiReservedNeurons
       });
     }
 
@@ -69,22 +71,22 @@ export async function reserveAiTokenBudget(
     const usage = await tx.aiDailyUsage.upsert({
       where: {
         provider_usageDate: {
-          provider: AI_BUDGET_PROVIDER,
+          provider: AI_PROVIDER,
           usageDate
         }
       },
       create: {
-        provider: AI_BUDGET_PROVIDER,
+        provider: AI_PROVIDER,
         usageDate
       },
       update: {}
     });
     if (
-      !canReserveAiTokens(
-        usage.usedTokens,
-        usage.reservedTokens,
+      !canReserveAiNeurons(
+        usage.usedNeurons,
+        usage.reservedNeurons,
         dailyBudget,
-        normalizedRequestedTokens
+        normalizedRequestedNeurons
       )
     ) {
       return false;
@@ -93,75 +95,78 @@ export async function reserveAiTokenBudget(
     await tx.aiDailyUsage.update({
       where: {
         provider_usageDate: {
-          provider: AI_BUDGET_PROVIDER,
+          provider: AI_PROVIDER,
           usageDate
         }
       },
       data: {
-        reservedTokens: {
-          increment: normalizedRequestedTokens
+        reservedNeurons: {
+          increment: normalizedRequestedNeurons
         }
       }
     });
     await tx.emailAutomationJob.update({
       where: { id: jobId },
       data: {
-        aiReservedTokens: normalizedRequestedTokens,
-        aiReservationDate: usageDate
+        aiReservedNeurons: normalizedRequestedNeurons,
+        aiNeuronReservationDate: usageDate
       }
     });
     return true;
   });
 }
 
-export async function settleAiTokenBudget(
+export async function settleAiNeuronBudget(
   tx: Prisma.TransactionClient,
   jobId: string,
-  actualTokens: number
+  actualNeurons: number | null
 ) {
-  const job = await lockTokenReservation(tx, jobId);
-  if (job.aiReservedTokens <= 0 || !job.aiReservationDate) return;
+  const job = await lockNeuronReservation(tx, jobId);
+  if (job.aiReservedNeurons <= 0 || !job.aiNeuronReservationDate) return;
 
   await consumeReservation(tx, {
     jobId,
-    usageDate: job.aiReservationDate,
-    reservedTokens: job.aiReservedTokens,
-    chargedTokens: Math.max(0, Math.trunc(actualTokens))
+    usageDate: job.aiNeuronReservationDate,
+    reservedNeurons: job.aiReservedNeurons,
+    chargedNeurons:
+      actualNeurons === null
+        ? job.aiReservedNeurons
+        : Math.max(0, Math.ceil(actualNeurons))
   });
 }
 
-export async function consumeAiTokenReservationAsUsed(jobId: string) {
+export async function consumeAiNeuronReservationAsUsed(jobId: string) {
   await prisma.$transaction(async (tx) => {
-    await consumeAiTokenReservationAsUsedInTransaction(tx, jobId);
+    await consumeAiNeuronReservationAsUsedInTransaction(tx, jobId);
   });
 }
 
-export async function consumeAiTokenReservationAsUsedInTransaction(
+export async function consumeAiNeuronReservationAsUsedInTransaction(
   tx: Prisma.TransactionClient,
   jobId: string
 ) {
-  const job = await lockTokenReservation(tx, jobId);
-  if (job.aiReservedTokens <= 0 || !job.aiReservationDate) return;
+  const job = await lockNeuronReservation(tx, jobId);
+  if (job.aiReservedNeurons <= 0 || !job.aiNeuronReservationDate) return;
 
   await consumeReservation(tx, {
     jobId,
-    usageDate: job.aiReservationDate,
-    reservedTokens: job.aiReservedTokens,
-    chargedTokens: job.aiReservedTokens
+    usageDate: job.aiNeuronReservationDate,
+    reservedNeurons: job.aiReservedNeurons,
+    chargedNeurons: job.aiReservedNeurons
   });
 }
 
-async function lockTokenReservation(
+async function lockNeuronReservation(
   tx: Prisma.TransactionClient,
   jobId: string
 ) {
   const [job] = await tx.$queryRaw<
     Array<{
-      aiReservedTokens: number;
-      aiReservationDate: string | null;
+      aiReservedNeurons: number;
+      aiNeuronReservationDate: string | null;
     }>
   >`
-    SELECT "aiReservedTokens", "aiReservationDate"
+    SELECT "aiReservedNeurons", "aiNeuronReservationDate"
     FROM "EmailAutomationJob"
     WHERE "id" = ${jobId}
     FOR UPDATE
@@ -175,38 +180,38 @@ async function consumeReservation(
   input: {
     jobId: string;
     usageDate: string;
-    reservedTokens: number;
-    chargedTokens: number;
+    reservedNeurons: number;
+    chargedNeurons: number;
   }
 ) {
   await tx.aiDailyUsage.upsert({
     where: {
       provider_usageDate: {
-        provider: AI_BUDGET_PROVIDER,
+        provider: AI_PROVIDER,
         usageDate: input.usageDate
       }
     },
     create: {
-      provider: AI_BUDGET_PROVIDER,
+      provider: AI_PROVIDER,
       usageDate: input.usageDate,
-      reservedTokens: input.reservedTokens
+      reservedNeurons: input.reservedNeurons
     },
     update: {}
   });
   await tx.$executeRaw`
     UPDATE "AiDailyUsage"
     SET
-      "reservedTokens" = GREATEST(0, "reservedTokens" - ${input.reservedTokens}),
-      "usedTokens" = "usedTokens" + ${input.chargedTokens},
+      "reservedNeurons" = GREATEST(0, "reservedNeurons" - ${input.reservedNeurons}),
+      "usedNeurons" = "usedNeurons" + ${input.chargedNeurons},
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "provider" = ${AI_BUDGET_PROVIDER}
+    WHERE "provider" = ${AI_PROVIDER}
       AND "usageDate" = ${input.usageDate}
   `;
   await tx.emailAutomationJob.update({
     where: { id: input.jobId },
     data: {
-      aiReservedTokens: 0,
-      aiReservationDate: null
+      aiReservedNeurons: 0,
+      aiNeuronReservationDate: null
     }
   });
 }
@@ -223,7 +228,7 @@ async function withSerializableRetry<T>(
       if (!isRetryableTransactionError(error) || attempt === 2) throw error;
     }
   }
-  throw new Error("AI token budget transaction failed");
+  throw new Error("AI neuron budget transaction failed");
 }
 
 function isRetryableTransactionError(error: unknown) {
@@ -237,16 +242,16 @@ export function toUtcUsageDate(now: Date) {
   return now.toISOString().slice(0, 10);
 }
 
-export function canReserveAiTokens(
-  usedTokens: number,
-  reservedTokens: number,
+export function canReserveAiNeurons(
+  usedNeurons: number,
+  reservedNeurons: number,
   dailyBudget: number,
-  requestedTokens = AI_TOKEN_RESERVATION_PER_REQUEST
+  requestedNeurons = AI_NEURON_RESERVATION_PER_REQUEST
 ) {
-  return usedTokens + reservedTokens + requestedTokens <= dailyBudget;
+  return usedNeurons + reservedNeurons + requestedNeurons <= dailyBudget;
 }
 
-function normalizeRequestedTokens(value: number) {
+function normalizeRequestedNeurons(value: number) {
   if (!Number.isFinite(value) || value <= 0) return null;
   return Math.ceil(value);
 }

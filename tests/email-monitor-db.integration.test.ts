@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decideAndApplyEmailAutomation } from "@/features/email-monitor/automation";
 import { saveEmailMonitorConfig } from "@/features/email-monitor/config";
-import { reserveAiTokenBudget } from "@/features/email-monitor/token-budget";
+import { reserveAiNeuronBudget } from "@/features/email-monitor/token-budget";
 import { prisma } from "@/lib/prisma";
 
 const runDatabaseIntegration = process.env.RUN_DATABASE_INTEGRATION === "1";
@@ -15,7 +15,7 @@ describe.runIf(runDatabaseIntegration)(
   () => {
     beforeAll(async () => {
       await prisma.aiDailyUsage.deleteMany({
-        where: { provider: "groq", usageDate }
+        where: { provider: "cloudflare-workers-ai", usageDate }
       });
       const user = await prisma.user.create({
         data: {
@@ -55,9 +55,9 @@ describe.runIf(runDatabaseIntegration)(
       }
       await prisma.aiDailyUsage.create({
         data: {
-          provider: "groq",
+          provider: "cloudflare-workers-ai",
           usageDate,
-          usedTokens: 140_000
+          usedNeurons: 7_000
         }
       });
     });
@@ -67,7 +67,7 @@ describe.runIf(runDatabaseIntegration)(
         await prisma.user.deleteMany({ where: { id: userId } });
       }
       await prisma.aiDailyUsage.deleteMany({
-        where: { provider: "groq", usageDate }
+        where: { provider: "cloudflare-workers-ai", usageDate }
       });
       await prisma.$disconnect();
     });
@@ -79,20 +79,20 @@ describe.runIf(runDatabaseIntegration)(
         data: { status: "PROCESSING" }
       });
       const results = await Promise.all(
-        jobIds.map((jobId) => reserveAiTokenBudget(jobId, now))
+        jobIds.map((jobId) => reserveAiNeuronBudget(jobId, now))
       );
       const usage = await prisma.aiDailyUsage.findUniqueOrThrow({
         where: {
           provider_usageDate: {
-            provider: "groq",
+            provider: "cloudflare-workers-ai",
             usageDate
           }
         }
       });
 
       expect(results.filter(Boolean)).toHaveLength(2);
-      expect(usage.usedTokens).toBe(140_000);
-      expect(usage.reservedTokens).toBe(40_000);
+      expect(usage.usedNeurons).toBe(7_000);
+      expect(usage.reservedNeurons).toBe(3_000);
     });
 
     it("rechecks monitoring consent inside the apply transaction", async () => {
@@ -195,7 +195,7 @@ describe.runIf(runDatabaseIntegration)(
         prisma.aiDailyUsage.findUniqueOrThrow({
           where: {
             provider_usageDate: {
-              provider: "groq",
+              provider: "cloudflare-workers-ai",
               usageDate
             }
           }
@@ -211,8 +211,8 @@ describe.runIf(runDatabaseIntegration)(
       expect(
         jobs.every((job) => job.errorCode === "MONITOR_QUERY_CHANGED")
       ).toBe(true);
-      expect(usage.usedTokens).toBe(180_000);
-      expect(usage.reservedTokens).toBe(0);
+      expect(usage.usedNeurons).toBe(10_000);
+      expect(usage.reservedNeurons).toBe(0);
     });
   }
 );

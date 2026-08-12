@@ -19,8 +19,8 @@ describe("scoreEmailExtraction", () => {
   });
 });
 
-describe.skipIf(process.env.RUN_GROQ_EVALS !== "1")(
-  "Groq gpt-oss email extraction evaluation",
+describe.skipIf(process.env.RUN_CLOUDFLARE_EVALS !== "1")(
+  "Cloudflare Workers AI gpt-oss email extraction evaluation",
   () => {
     it.each(emailExtractionEvaluationCases)(
       "keeps critical-field accuracy for $name",
@@ -40,8 +40,8 @@ describe.skipIf(process.env.RUN_GROQ_EVALS !== "1")(
       expect(result.ok).toBe(true);
 
       if (result.ok) {
-        expect(result.metadata.provider).toBe("groq");
-        expect(result.metadata.model).toBe("openai/gpt-oss-120b");
+        expect(result.metadata.provider).toBe("cloudflare-workers-ai");
+        expect(result.metadata.model).toBe("@cf/openai/gpt-oss-120b");
         expect(result.metadata.usage.totalTokens).toBeGreaterThan(0);
         expect(scoreEmailExtraction(result.data, expected).score).toBeGreaterThanOrEqual(
           0.9

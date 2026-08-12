@@ -528,28 +528,30 @@ model EmailMonitorConfig {
 }
 
 model EmailAutomationJob {
-  id                   String                   @id @default(cuid())
-  userId               String
-  emailImportId        String                   @unique
-  gmailMessageId       String
-  messageDigest        String
-  status               EmailAutomationJobStatus @default(PENDING)
-  attempts             Int                      @default(0)
-  leaseUntil           DateTime?
-  nextAttemptAt        DateTime?
-  errorCode            String?
-  errorMessage         String?
-  aiInputTokens        Int                      @default(0)
-  aiOutputTokens       Int                      @default(0)
-  aiTotalTokens        Int                      @default(0)
-  aiReservedTokens     Int                      @default(0)
-  aiReservationDate    String?
-  aiProcessedAt        DateTime?
-  extractionResultId   String?                  @unique
-  matchedApplicationId String?
-  processedAt          DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
+  id                      String                   @id @default(cuid())
+  userId                  String
+  emailImportId           String                   @unique
+  gmailMessageId          String
+  messageDigest           String
+  status                  EmailAutomationJobStatus @default(PENDING)
+  attempts                Int                      @default(0)
+  leaseUntil              DateTime?
+  nextAttemptAt           DateTime?
+  errorCode               String?
+  errorMessage            String?
+  aiInputTokens           Int                      @default(0)
+  aiOutputTokens          Int                      @default(0)
+  aiTotalTokens           Int                      @default(0)
+  aiReservedTokens        Int                      @default(0)
+  aiReservationDate       String?
+  aiReservedNeurons       Int                      @default(0)
+  aiNeuronReservationDate String?
+  aiProcessedAt           DateTime?
+  extractionResultId      String?                  @unique
+  matchedApplicationId    String?
+  processedAt             DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
   user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   emailImport        EmailImport            @relation(fields: [emailImportId], references: [id], onDelete: Cascade)
@@ -585,11 +587,13 @@ model EmailAutomationChange {
 }
 
 model AiDailyUsage {
-  provider       String
-  usageDate      String
-  usedTokens     Int      @default(0)
-  reservedTokens Int      @default(0)
-  updatedAt      DateTime @updatedAt
+  provider        String
+  usageDate       String
+  usedTokens      Int      @default(0)
+  reservedTokens  Int      @default(0)
+  usedNeurons     Int      @default(0)
+  reservedNeurons Int      @default(0)
+  updatedAt       DateTime @updatedAt
 
   @@id([provider, usageDate])
 }

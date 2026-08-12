@@ -31,7 +31,7 @@ export type BrowserMessageExtractionResult =
       ok: true;
       data: BrowserMessageExtraction;
       metadata: {
-        provider: "groq";
+        provider: "cloudflare-workers-ai";
         model: string;
         promptVersion: string;
         usage: AiUsage;

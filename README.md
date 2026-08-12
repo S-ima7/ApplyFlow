@@ -26,7 +26,7 @@ ApplyFlowは、就職・転職活動の応募先、選考フェーズ、面談�
 - Auth.js / Google OAuth
 - Prisma / PostgreSQL
 - FullCalendar
-- Groq Responses API / OpenAI gpt-oss-120b
+- Cloudflare Workers AI REST API / `@cf/openai/gpt-oss-120b`
 - Netlify Functions / Neon PostgreSQL
 - Vitest / ESLint
 
@@ -49,11 +49,12 @@ DIRECT_URL=
 AUTH_SECRET=
 AUTH_GOOGLE_ID=
 AUTH_GOOGLE_SECRET=
-AI_PROVIDER=groq
-AI_MODEL=openai/gpt-oss-120b
+AI_PROVIDER=cloudflare-workers-ai
+AI_MODEL=@cf/openai/gpt-oss-120b
 AI_REASONING_EFFORT=high
-AI_DAILY_TOKEN_BUDGET=180000
-GROQ_API_KEY=
+AI_DAILY_NEURON_BUDGET=10000
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_API_TOKEN=
 EMAIL_MONITOR_WORKER_SECRET=
 ```
 
@@ -65,11 +66,11 @@ Google Cloud側では、OAuthクライアントに加えてGoogle Calendar API�
 
 Google CalendarとGmailへの書き込みは行いません。
 
-Groq Consoleでは本番利用前にZero Data Retentionを有効化してください。ApplyFlowは有料OpenAI APIへフォールバックしません。
+Cloudflare Dashboardで **Workers AI → Use REST API → Create a Workers AI API Token** を選び、`CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_API_TOKEN` を設定してください。手動作成するtokenには `Workers AI - Read` と `Workers AI - Edit` の両方を付与します。詳しくは[Cloudflare Workers AI REST APIの公式手順](https://developers.cloudflare.com/workers-ai/get-started/rest-api/)を参照してください。ApplyFlowは有料AI APIへフォールバックしません。
 
 ## Netlify / Neonデプロイ
 
-無料構成ではNetlify Scheduled Functionが15分ごとにGmail監視用Background Functionを起動します。Neonでは`DATABASE_URL`にpooled URL、`DIRECT_URL`にdirect URLを設定します。
+無料構成ではNetlify Scheduled Functionが15分ごとにGmail監視用Background Functionを起動します。Neonでは`DATABASE_URL`にpooled URL、`DIRECT_URL`にdirect URLを設定します。CloudflareはWorkers Freeのまま運用し、Workers Paidへアップグレードしません。Workers AI Freeの1日10,000 Neuronsに達した場合やCloudflareから429が返った場合は、課金せず残件を翌日以降へ繰り越します。使用量は[Cloudflare Workers AIの料金・使用量ページ](https://developers.cloudflare.com/workers-ai/platform/pricing/)で確認してください。
 
 本番ビルドからDB migrationは実行しません。デプロイ前の明示的なrelease stepとして実行してください。
 
@@ -96,7 +97,7 @@ Chromeのデベロッパーモードで`browser-extension/dist`を読み込み�
 - DBにはGmail message ID、件名、送信者、受信日時、抽出結果を保存します。定期監視では本文断片となるsnippetも保存しません。
 - Gmail監視では総合・変更対象フィールドconfidenceが90%以上で、一意な既存応募へ安全に反映できる場合だけ自動更新します。
 - 新規応募、曖昧一致、取消、手入力データと競合する抽出結果は確認画面へ保留します。
-- Gmail本文と企業メッセージ本文はGroq上のgpt-ossへ一時送信します。生本文はDBやログへ保存しません。
+- Gmail本文と企業メッセージ本文はCloudflare Workers AI上の`@cf/openai/gpt-oss-120b`へ一時送信します。ApplyFlowはメール本文をCloudflareの保存サービスへ保存せず、生本文をDBやログへも保存しません。
 - 企業メッセージは利用者が選択して同意した本文だけをAI抽出時に送信し、生本文はDBへ保存しません。
 - Google Calendarから取り込んだ予定はApplyFlow所有のスナップショットとして保存します。再取り込み時は同じ外部イベントを更新し、重複作成しません。
 

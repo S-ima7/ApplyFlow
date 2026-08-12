@@ -13,8 +13,8 @@
 - [ ] 90%以上の総合・変更対象フィールド信頼度と、一意な既存応募・対象面接を満たすメールだけが一度だけ自動反映される。
 - [ ] 新規応募、曖昧一致、取消、手入力データを上書きする変更は確認待ちになり、ドメインデータを変更しない。
 - [ ] メール本文がDB、アプリログ、監査ログに保存されない。
-- [ ] メール取込とブラウザ拡張がGroq上の`openai/gpt-oss-120b`を使用し、有料OpenAI APIへフォールバックしない。
-- [ ] Netlify Free、Neon Free、Groq Freeの上限到達時は課金せず処理を保留する。
+- [ ] メール取込とブラウザ拡張がCloudflare Workers AI上の`@cf/openai/gpt-oss-120b`を使用し、有料AIへフォールバックしない。
+- [ ] Netlify Free、Neon Free、Cloudflare Workers AI Freeの上限到達時は課金せず処理を保留する。
 - [ ] 単体・統合テスト、型検査、Lint、production build、プレビュー相当のスモーク検証を通過する。
 
 ## Non-goals
@@ -35,7 +35,7 @@
 - 自動反映は一つのDBトランザクションで行い、監査可能な変更前後情報を残す。
 - 手入力の候補日時・期限を自動削除または上書きしない。
 - AIはStrict JSON Schemaで検証し、総合と変更対象フィールドのconfidenceがすべて0.90以上でなければ自動反映しない。
-- AI日次トークン使用量が180,000へ達した場合、残件は翌日へ繰り越す。
+- AI日次Neuron使用量が10,000へ達した場合、残件は翌日へ繰り越す。Cloudflareアカウント全体の実使用量が先に上限へ達した場合も、429として翌実行以降へ繰り越す。
 - 秘密情報、メール本文、移行ダンプをGitへ保存しない。
 
 ## Responsibilities and interfaces
@@ -56,14 +56,24 @@
 | --- | --- | --- | --- |
 | Hosting | Netlify Free | Next.js、定期・background関数、無料枠上限で停止 | Vercel Hobbyはcronが日次、常駐無料VMは停止・期限制約 |
 | Database | Neon Free / AWS Ohio | Netlify既定リージョンに近く、pooled/direct URLを分離可能 | Netlify Databaseは費用予測が弱い |
-| AI | Groq Free上の`openai/gpt-oss-120b`、reasoning high | OpenAI製の最上位open-weightモデルを追加課金なしで利用 | OpenAI APIはChatGPT契約と別課金 |
+| AI | Cloudflare Workers AI Free上の`@cf/openai/gpt-oss-120b`、reasoning high | OpenAI製の最上位open-weightモデルを日次10,000 Neurons以内で追加課金なしに利用 | Groqはアカウントへログインできず運用不能。OpenAI APIはChatGPT契約と別課金 |
 | Monitoring | 15分Gmail polling | Pub/Sub課金口座を不要にし、無料構成を維持 | Gmail PushはGCP Pub/Subとwatch更新が必要 |
 | Automatic action | 既存応募への高信頼変更のみ | 誤登録・取消の不可逆影響を抑える | 全件自動登録 |
 
 ## Failure, migration, and rollback
 
 - Failure behavior: 429、5xx、network errorはRETRY_WAITへ戻す。日次上限は翌日まで保留する。Google認証失効は監視を停止して再認証を表示する。再試行上限後はFAILEDとして本文なしのエラー概要を保存する。
-- Compatibility or migration: 既存DBを`pg_dump --no-owner --no-acl`でNeonへ復元し、新しいPrisma migrationを`DIRECT_URL`へ適用する。SessionとVerificationTokenは移行せず再ログインする。ブラウザ拡張の公開API契約は維持する。
+- Compatibility or migration: 既存DBを`pg_dump --no-owner --no-acl`でNeonへ復元し、新しいPrisma migrationを`DIRECT_URL`へ適用する。SessionとVerificationTokenは移行せず再ログインする。ブラウザ拡張の公開API契約は維持する。AI上限の単位変更は次の追加型スキーマで移行し、Groq用列は受入完了まで旧版ロールバック専用として保持する。
+
+```json
+// before
+{"provider":"groq","usedTokens":3200,"reservedTokens":800,"aiReservedTokens":800}
+
+// after（新コードが使用する列）
+{"provider":"cloudflare-workers-ai","usedNeurons":102,"reservedNeurons":28,"aiReservedNeurons":28}
+```
+
+`usedTokens`、`reservedTokens`、`aiReservedTokens`は移行時に0へ戻し、新コードから更新しない。Cloudflareの実使用量は、モデル公表値の入力31,818 Neurons/100万tokens、出力68,182 Neurons/100万tokensから切り上げ計算する。
 - Rollback: monitor configを無効化しScheduled Functionを停止して直前アプリ版へ戻す。DB変更は追加型とし、自動down migrationを行わない。移行元DBは受入完了まで保持する。
 
 ## Verification
@@ -74,15 +84,15 @@
 | Review guardrails | adversarial fixtures | 新規、曖昧、取消、手入力衝突の自動変更0件 |
 | Privacy | persistence/log assertions | raw bodyがDB・ログに存在しない |
 | Idempotency | worker retry/concurrency tests | job、slot、activityの重複0件 |
-| AI quality | synthetic live evaluation | Strict Schema 100%、重要項目90%以上 |
+| AI quality | Cloudflare実APIによるsynthetic live evaluation | Strict Schema 100%、重要項目90%以上 |
 | Compatibility | existing full test suite | ブラウザ拡張・手動取込を含む回帰なし |
 | Deployability | typecheck、lint、build、function smoke | 全コマンド成功、cronからbackground起動 |
 
 ## Risks and human review
 
 - Google OAuth access/refresh token、BrowserExtensionTokenをNeonへ移す操作。
-- メール本文がGroqの米国インフラへ一時送信されることとZero Data Retentionの有効化。
-- Netlify、Neon、Groqの無料条件と上限はデプロイ直前に公式画面で再確認する。
+- メール本文がCloudflare Workers AIへ一時送信されること。ApplyFlowはCloudflareの保存サービスを併用せず、Cloudflareの[Data usage](https://developers.cloudflare.com/workers-ai/platform/data-usage/)は明示的な同意なしにCustomer Contentをモデル学習やサービス改善へ使用しないと定めている。
+- Netlify、Neon、Cloudflare Workers AIの無料条件と上限はデプロイ直前に公式画面で再確認する。Cloudflare Workers Paidへアップグレードしない。
 - 本番OAuth redirect URI、環境変数、production deploy、データ切替は人間が重点確認する。
 
 ## Open questions

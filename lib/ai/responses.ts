@@ -1,9 +1,12 @@
 import type { z } from "zod";
 
-export const DEFAULT_AI_MODEL = "openai/gpt-oss-120b";
+export const AI_PROVIDER = "cloudflare-workers-ai" as const;
+export const DEFAULT_AI_MODEL = "@cf/openai/gpt-oss-120b";
 export const DEFAULT_AI_REASONING_EFFORT = "high";
 export const MAX_AI_OUTPUT_TOKENS = 4_096;
-const GROQ_SERVER_FRAMING_TOKEN_ALLOWANCE = 2_048;
+export const CLOUDFLARE_INPUT_NEURONS_PER_MILLION_TOKENS = 31_818;
+export const CLOUDFLARE_OUTPUT_NEURONS_PER_MILLION_TOKENS = 68_182;
+const CLOUDFLARE_SERVER_FRAMING_TOKEN_ALLOWANCE = 2_048;
 
 export type AiUsage = {
   inputTokens: number;
@@ -25,7 +28,7 @@ export type AiErrorCode =
   | "SCHEMA_VALIDATION_FAILED";
 
 export type AiClientError = {
-  provider: "groq" | "local";
+  provider: typeof AI_PROVIDER | "local";
   code: AiErrorCode;
   retryable: boolean;
   status?: number;
@@ -36,7 +39,7 @@ export type StructuredAiResult<T> =
       ok: true;
       data: T;
       metadata: {
-        provider: "groq";
+        provider: typeof AI_PROVIDER;
         model: string;
         usage: AiUsage;
       };
@@ -47,7 +50,7 @@ export type StructuredAiResult<T> =
       error: AiClientError;
     };
 
-export type GroqResponsePayload = {
+export type CloudflareResponsePayload = {
   output_text?: string;
   output?: Array<{
     content?: Array<{
@@ -74,38 +77,70 @@ export type StructuredAiRequest<T> = {
 export async function requestStructuredAi<T>(
   request: StructuredAiRequest<T>
 ): Promise<StructuredAiResult<T>> {
-  const provider = process.env.AI_PROVIDER || "groq";
+  const provider = process.env.AI_PROVIDER || AI_PROVIDER;
 
-  if (provider !== "groq") {
+  if (provider !== AI_PROVIDER) {
     return failure(
       "INVALID_CONFIGURATION",
-      "AI_PROVIDER は groq のみ使用できます",
+      `AI_PROVIDER は ${AI_PROVIDER} のみ使用できます`,
       false
     );
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return failure("MISSING_API_KEY", "GROQ_API_KEY が設定されていません", false);
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId) {
+    return failure(
+      "INVALID_CONFIGURATION",
+      "CLOUDFLARE_ACCOUNT_ID が設定されていません",
+      false
+    );
+  }
+  if (!apiToken) {
+    return failure(
+      "MISSING_API_KEY",
+      "CLOUDFLARE_API_TOKEN が設定されていません",
+      false
+    );
   }
 
   const model = process.env.AI_MODEL || DEFAULT_AI_MODEL;
-  const reasoningEffort = normalizeReasoningEffort(
-    process.env.AI_REASONING_EFFORT
+  if (model !== DEFAULT_AI_MODEL) {
+    return failure(
+      "INVALID_CONFIGURATION",
+      `AI_MODEL は ${DEFAULT_AI_MODEL} のみ使用できます`,
+      false
+    );
+  }
+  const reasoningEffort =
+    process.env.AI_REASONING_EFFORT || DEFAULT_AI_REASONING_EFFORT;
+  if (reasoningEffort !== DEFAULT_AI_REASONING_EFFORT) {
+    return failure(
+      "INVALID_CONFIGURATION",
+      `AI_REASONING_EFFORT は ${DEFAULT_AI_REASONING_EFFORT} のみ使用できます`,
+      false
+    );
+  }
+  const requestBody = buildCloudflareRequestBody(
+    request,
+    model,
+    reasoningEffort
   );
-  const requestBody = buildGroqRequestBody(request, model, reasoningEffort);
 
   let response: Response;
   try {
-    response = await fetch("https://api.groq.com/openai/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      signal: AbortSignal.timeout(request.timeoutMs ?? 45_000),
-      body: JSON.stringify(requestBody)
-    });
+    response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/v1/responses`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json"
+        },
+        signal: AbortSignal.timeout(request.timeoutMs ?? 45_000),
+        body: JSON.stringify(requestBody)
+      }
+    );
   } catch (error) {
     if (isTimeoutError(error)) {
       return failure(
@@ -126,9 +161,9 @@ export async function requestStructuredAi<T>(
     return providerFailure(response.status);
   }
 
-  let payload: GroqResponsePayload;
+  let payload: CloudflareResponsePayload;
   try {
-    payload = (await response.json()) as GroqResponsePayload;
+    payload = (await response.json()) as CloudflareResponsePayload;
   } catch {
     return failure(
       "INVALID_RESPONSE",
@@ -176,39 +211,52 @@ export async function requestStructuredAi<T>(
     ok: true,
     data: parsed.data,
     metadata: {
-      provider: "groq",
+      provider: AI_PROVIDER,
       model,
       usage
     }
   };
 }
 
-export function estimateStructuredAiTokenCeiling(
+export function estimateStructuredAiUsageCeiling(
   request: Pick<
     StructuredAiRequest<unknown>,
     "schemaName" | "jsonSchema" | "systemPrompt" | "userPrompt"
   >
 ) {
-  const requestBody = buildGroqRequestBody(
+  const requestBody = buildCloudflareRequestBody(
     request,
-    process.env.AI_MODEL || DEFAULT_AI_MODEL,
-    normalizeReasoningEffort(process.env.AI_REASONING_EFFORT)
+    DEFAULT_AI_MODEL,
+    DEFAULT_AI_REASONING_EFFORT
   );
   const inputByteCeiling = new TextEncoder().encode(
     JSON.stringify(requestBody)
   ).byteLength;
 
-  // Each input token represents at least one byte. Counting the complete JSON
-  // request by bytes plus a server-framing allowance is therefore deliberately
-  // larger than the provider's input-token count.
-  return (
-    inputByteCeiling +
-    GROQ_SERVER_FRAMING_TOKEN_ALLOWANCE +
-    MAX_AI_OUTPUT_TOKENS
+  // A provider tokenizer is intentionally not added: the complete request byte
+  // count plus framing is a dependency-free upper bound for UTF-8 token counts.
+  return {
+    inputTokens:
+      inputByteCeiling + CLOUDFLARE_SERVER_FRAMING_TOKEN_ALLOWANCE,
+    outputTokens: MAX_AI_OUTPUT_TOKENS
+  };
+}
+
+export function calculateCloudflareNeurons(
+  usage: Pick<AiUsage, "inputTokens" | "outputTokens">
+) {
+  if (!isTokenCount(usage.inputTokens) || !isTokenCount(usage.outputTokens)) {
+    return null;
+  }
+
+  return Math.ceil(
+    (usage.inputTokens * CLOUDFLARE_INPUT_NEURONS_PER_MILLION_TOKENS +
+      usage.outputTokens * CLOUDFLARE_OUTPUT_NEURONS_PER_MILLION_TOKENS) /
+      1_000_000
   );
 }
 
-function buildGroqRequestBody(
+function buildCloudflareRequestBody(
   request: Pick<
     StructuredAiRequest<unknown>,
     "schemaName" | "jsonSchema" | "systemPrompt" | "userPrompt"
@@ -243,7 +291,7 @@ function buildGroqRequestBody(
   };
 }
 
-export function extractTextFromAiResponse(data: GroqResponsePayload) {
+export function extractTextFromAiResponse(data: CloudflareResponsePayload) {
   if (data.output_text) {
     return data.output_text;
   }
@@ -257,7 +305,9 @@ export function extractTextFromAiResponse(data: GroqResponsePayload) {
     .trim();
 }
 
-function parseUsage(usage: GroqResponsePayload["usage"]): AiUsage | null {
+function parseUsage(
+  usage: CloudflareResponsePayload["usage"]
+): AiUsage | null {
   if (
     !usage ||
     !isTokenCount(usage.input_tokens) ||
@@ -278,7 +328,7 @@ function providerFailure(status: number): StructuredAiResult<never> {
   if (status === 401 || status === 403) {
     return failure(
       "AUTHENTICATION_ERROR",
-      "Groqの認証に失敗しました",
+      "Cloudflare Workers AIの認証に失敗しました",
       false,
       status
     );
@@ -315,18 +365,12 @@ function failure(
     ok: false,
     message,
     error: {
-      provider: "groq",
+      provider: AI_PROVIDER,
       code,
       retryable,
       ...(status === undefined ? {} : { status })
     }
   };
-}
-
-function normalizeReasoningEffort(value: string | undefined) {
-  return value === "low" || value === "medium" || value === "high"
-    ? value
-    : DEFAULT_AI_REASONING_EFFORT;
 }
 
 function isTokenCount(value: unknown): value is number {

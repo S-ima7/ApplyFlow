@@ -24,10 +24,11 @@ import {
   nextUtcDay
 } from "@/features/email-monitor/state-machine";
 import {
-  consumeAiTokenReservationAsUsed,
-  reserveAiTokenBudget,
-  settleAiTokenBudget
+  consumeAiNeuronReservationAsUsed,
+  reserveAiNeuronBudget,
+  settleAiNeuronBudget
 } from "@/features/email-monitor/token-budget";
+import { calculateCloudflareNeurons } from "@/lib/ai/responses";
 import {
   getGmailMessage,
   searchGmailMessages,
@@ -345,16 +346,20 @@ async function processClaimedJob(
       }
     });
   } else {
-    const maximumRequestTokens =
-      await estimateEmailWithConfiguredAiMaxTokens(
+    const maximumRequestUsage =
+      await estimateEmailWithConfiguredAiUsageCeiling(
         message,
         job.user.timezone,
         now
       );
-    const reserved = await reserveAiTokenBudget(
+    const maximumRequestNeurons = calculateCloudflareNeurons({
+      inputTokens: maximumRequestUsage.inputTokens,
+      outputTokens: maximumRequestUsage.outputTokens
+    });
+    const reserved = await reserveAiNeuronBudget(
       job.id,
       now,
-      maximumRequestTokens
+      maximumRequestNeurons ?? Number.POSITIVE_INFINITY
     );
     if (!reserved) {
       const currentJob = await prisma.emailAutomationJob.findUnique({
@@ -371,8 +376,12 @@ async function processClaimedJob(
   }
 
   if (!normalized.ok) {
-    await consumeAiTokenReservationAsUsed(job.id);
+    await consumeAiNeuronReservationAsUsed(job.id);
     const errorCode = normalized.error?.code ?? classifyAiError(normalized.message);
+    if (errorCode === "RATE_LIMITED") {
+      await deferJobForQuota(job.id, now);
+      return "QUOTA_PAUSED" as const;
+    }
     if (normalized.error?.retryable === false) {
       await markJobFailed(job.id, errorCode, now, normalized.message);
       return;
@@ -409,10 +418,10 @@ async function processClaimedJob(
           aiProcessedAt: now
         }
       });
-      await settleAiTokenBudget(
+      await settleAiNeuronBudget(
         tx,
         job.id,
-        normalized.metadata.usage.totalTokens
+        calculateCloudflareNeurons(normalized.metadata.usage)
       );
     });
   }
@@ -434,7 +443,7 @@ async function deferJobForQuota(jobId: string, now: Date) {
       attempts: { decrement: 1 },
       leaseUntil: null,
       nextAttemptAt: nextUtcDay(now),
-      errorCode: "AI_DAILY_TOKEN_BUDGET",
+      errorCode: "AI_DAILY_NEURON_BUDGET",
       errorMessage: null
     }
   });
@@ -487,7 +496,7 @@ async function markQuotaPaused(userId: string | undefined, now: Date) {
       ...(userId ? { userId } : {})
     },
     data: {
-      lastErrorCode: "AI_DAILY_TOKEN_BUDGET",
+      lastErrorCode: "AI_DAILY_NEURON_BUDGET",
       lastErrorMessage: `AI処理は${nextUtcDay(now).toISOString()}以降に再開します`
     }
   });
@@ -526,7 +535,7 @@ function safeErrorMessage(message?: string) {
 
 function classifyAiError(message: string) {
   if (message.includes("利用上限") || message.includes("429")) {
-    return "AI_RATE_LIMITED";
+    return "RATE_LIMITED";
   }
   if (message.includes("形式") || message.includes("JSON")) {
     return "AI_SCHEMA_INVALID";
@@ -560,7 +569,7 @@ async function extractEmailWithConfiguredAi(
   return normalizeEmailMonitorAiResult(raw);
 }
 
-async function estimateEmailWithConfiguredAiMaxTokens(
+async function estimateEmailWithConfiguredAiUsageCeiling(
   email: GmailFullMessage,
   timezone: string,
   referenceNow: Date
@@ -568,17 +577,20 @@ async function estimateEmailWithConfiguredAiMaxTokens(
   const aiExtractionModule = (await import(
     "@/features/email-import/extraction"
   )) as Record<string, unknown>;
-  const estimateEmailExtractionMaxTokens =
-    aiExtractionModule.estimateEmailExtractionMaxTokens;
-  if (typeof estimateEmailExtractionMaxTokens !== "function") {
-    return Number.POSITIVE_INFINITY;
+  const estimateEmailExtractionUsageCeiling =
+    aiExtractionModule.estimateEmailExtractionUsageCeiling;
+  if (typeof estimateEmailExtractionUsageCeiling !== "function") {
+    return {
+      inputTokens: Number.POSITIVE_INFINITY,
+      outputTokens: Number.POSITIVE_INFINITY
+    };
   }
 
   return (
-    estimateEmailExtractionMaxTokens as (
+    estimateEmailExtractionUsageCeiling as (
       message: GmailFullMessage,
       timezone: string,
       referenceNow: Date
-    ) => number
+    ) => { inputTokens: number; outputTokens: number }
   )(email, timezone, referenceNow);
 }

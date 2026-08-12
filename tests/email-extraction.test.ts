@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EMAIL_EXTRACTION_JSON_SCHEMA,
-  estimateEmailExtractionMaxTokens,
+  estimateEmailExtractionUsageCeiling,
   extractTextFromOpenAIResponse,
   normalizeEmailExtraction
 } from "@/features/email-import/extraction";
@@ -57,7 +57,7 @@ describe("normalizeEmailExtraction", () => {
 });
 
 describe("strict AI extraction contract", () => {
-  it("includes large multibyte email input in the preflight token ceiling", () => {
+  it("includes large multibyte email input in the preflight usage ceiling", () => {
     const email = {
       id: "message-1",
       threadId: "thread-1",
@@ -70,11 +70,11 @@ describe("strict AI extraction contract", () => {
     };
 
     expect(
-      estimateEmailExtractionMaxTokens(
+      estimateEmailExtractionUsageCeiling(
         email,
         "Asia/Tokyo",
         new Date("2026-07-27T00:00:00.000Z")
-      )
+      ).inputTokens
     ).toBeGreaterThan(20_000);
   });
 
