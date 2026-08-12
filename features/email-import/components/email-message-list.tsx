@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { importAndExtractEmail } from "@/features/email-import/actions";
 import type { GmailMessageSummary } from "@/lib/gmail";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTimeInTimezone } from "@/lib/date";
 
 type EmailMessageListProps = {
   messages: GmailMessageSummary[];
+  timezone: string;
 };
 
-export function EmailMessageList({ messages }: EmailMessageListProps) {
+export function EmailMessageList({ messages, timezone }: EmailMessageListProps) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -38,7 +39,9 @@ export function EmailMessageList({ messages }: EmailMessageListProps) {
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-semibold text-slate-950">{mail.subject ?? "(件名なし)"}</p>
-              <Badge variant="muted">{formatDateTime(mail.sentAt)}</Badge>
+              <Badge variant="muted">
+                {formatDateTimeInTimezone(mail.sentAt, timezone)}
+              </Badge>
             </div>
             <p className="text-sm text-slate-600">{mail.fromAddress ?? "送信者不明"}</p>
             <p className="line-clamp-2 text-sm text-slate-500">{mail.snippet}</p>

@@ -5,6 +5,7 @@ import {
   priorityValues,
   stageTypeValues
 } from "@/features/applications/schema";
+import { parseDateTimeInTimezone } from "@/lib/date";
 
 const optionalText = z
   .string()
@@ -130,6 +131,61 @@ export const emailAiExtractionSchema = emailExtractionCoreSchema.extend({
   evidence: extractionEvidenceSchema
 });
 
+export type EmailAiExtraction = z.infer<typeof emailAiExtractionSchema>;
+
+export function recoverEmailAiExtraction(
+  value: unknown,
+  options: {
+    timezone: string;
+    eventTypes?: readonly EmailAiExtraction["eventType"][];
+    fallbackEventType?: EmailAiExtraction["eventType"];
+  }
+): EmailAiExtraction | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const eventTypes = options.eventTypes ?? emailExtractionEventTypes;
+  const eventType = eventTypes.includes(
+    value.eventType as EmailAiExtraction["eventType"]
+  )
+    ? (value.eventType as EmailAiExtraction["eventType"])
+    : (options.fallbackEventType ?? "INFORMATION_ONLY");
+  const stageType = stageTypeValues.includes(
+    value.stageType as (typeof stageTypeValues)[number]
+  )
+    ? (value.stageType as (typeof stageTypeValues)[number])
+    : null;
+  const recovered = {
+    relevant: typeof value.relevant === "boolean" ? value.relevant : false,
+    eventType,
+    companyName: nullableText(value.companyName),
+    position: nullableText(value.position),
+    stageType,
+    stageName: nullableText(value.stageName),
+    proposedSlots: recoverSlots(value.proposedSlots, options.timezone),
+    confirmedSlot: recoverConfirmedSlot(value.confirmedSlot, options.timezone),
+    replyDeadline: recoverDateTime(value.replyDeadline, options.timezone),
+    offerAcceptanceDeadline: recoverDateTime(
+      value.offerAcceptanceDeadline,
+      options.timezone
+    ),
+    meetingUrl: nullableText(value.meetingUrl),
+    interviewerName: nullableText(value.interviewerName),
+    confidence: 0,
+    fieldConfidence: Object.fromEntries(
+      emailExtractionFieldKeys.map((key) => [key, 0])
+    ),
+    evidence: Object.fromEntries(
+      emailExtractionFieldKeys.map((key) => [
+        key,
+        isRecord(value.evidence) ? nullableText(value.evidence[key]) : null
+      ])
+    )
+  };
+  if (!hasRecoverableExtractionContent(recovered)) return undefined;
+  const parsed = emailAiExtractionSchema.safeParse(recovered);
+  return parsed.success ? parsed.data : undefined;
+}
+
 const localDateTime = z.string().trim();
 const optionalLocalDateTime = localDateTime.optional().transform((value) => value || undefined);
 
@@ -227,4 +283,88 @@ function validateOptionalDate(
     message: "有効な日時を入力してください",
     path
   });
+}
+
+function recoverSlots(value: unknown, timezone: string) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((slot) => recoverSlot(slot, timezone))
+    .filter((slot): slot is NonNullable<typeof slot> => slot !== null)
+    .slice(0, 10);
+}
+
+function recoverConfirmedSlot(value: unknown, timezone: string) {
+  if (!isRecord(value)) {
+    return { startAt: null, endAt: null, timezone: null };
+  }
+
+  const startAt = recoverDateTime(value.startAt, timezone);
+  const endAt = recoverDateTime(value.endAt, timezone);
+  if (!startAt && !endAt) {
+    return { startAt: null, endAt: null, timezone: null };
+  }
+  if (!startAt || !endAt || new Date(startAt) >= new Date(endAt)) {
+    return { startAt: null, endAt: null, timezone: null };
+  }
+
+  return {
+    startAt,
+    endAt,
+    timezone: nullableText(value.timezone) ?? timezone
+  };
+}
+
+function recoverSlot(value: unknown, timezone: string) {
+  if (!isRecord(value)) return null;
+
+  const startAt = recoverDateTime(value.startAt, timezone);
+  const endAt = recoverDateTime(value.endAt, timezone);
+  if (!startAt || !endAt || new Date(startAt) >= new Date(endAt)) return null;
+
+  return {
+    startAt,
+    endAt,
+    timezone: nullableText(value.timezone) ?? timezone
+  };
+}
+
+function recoverDateTime(value: unknown, timezone: string) {
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (hasExplicitTimezone(normalized)) {
+    return Number.isNaN(new Date(normalized).getTime()) ? null : normalized;
+  }
+
+  return parseDateTimeInTimezone(normalized, timezone)?.toISOString() ?? null;
+}
+
+function nullableText(value: unknown) {
+  if (typeof value !== "string") return null;
+  return value.trim() || null;
+}
+
+function hasRecoverableExtractionContent(value: Record<string, unknown>) {
+  const hasText = [
+    "companyName",
+    "position",
+    "stageName",
+    "replyDeadline",
+    "offerAcceptanceDeadline",
+    "meetingUrl",
+    "interviewerName"
+  ].some((key) => nullableText(value[key]) !== null);
+  const hasProposedSlots =
+    Array.isArray(value.proposedSlots) && value.proposedSlots.length > 0;
+  const hasConfirmedSlot =
+    isRecord(value.confirmedSlot) &&
+    Boolean(value.confirmedSlot.startAt || value.confirmedSlot.endAt);
+
+  return hasText || hasProposedSlots || hasConfirmedSlot;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }

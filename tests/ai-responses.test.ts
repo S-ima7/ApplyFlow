@@ -5,6 +5,7 @@ import {
   MAX_AI_OUTPUT_TOKENS,
   calculateCloudflareNeurons,
   estimateStructuredAiUsageCeiling,
+  parseAiJson,
   requestStructuredAi
 } from "@/lib/ai/responses";
 
@@ -14,6 +15,17 @@ afterEach(() => {
 });
 
 describe("requestStructuredAi", () => {
+  it("reads JSON wrapped in a code fence or explanatory text", () => {
+    expect(parseAiJson('```json\n{"value":"ok"}\n```')).toEqual({
+      ok: true,
+      value: { value: "ok" }
+    });
+    expect(parseAiJson('Result:\n{"value":"ok"}\nDone.')).toEqual({
+      ok: true,
+      value: { value: "ok" }
+    });
+  });
+
   it("estimates conservative input and output ceilings from the complete request", () => {
     const request = {
       schemaName: "test_schema",
@@ -109,6 +121,72 @@ describe("requestStructuredAi", () => {
           strict: true
         }
       }
+    });
+  });
+
+  it("uses a caller-provided conservative recovery after schema validation fails", async () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "test-account");
+    vi.stubEnv("CLOUDFLARE_API_TOKEN", "test-cloudflare-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({ value: 42 }),
+            usage: {
+              input_tokens: 10,
+              output_tokens: 5,
+              total_tokens: 15
+            }
+          }),
+          { status: 200 }
+        )
+      )
+    );
+
+    const result = await requestStructuredAi({
+      schemaName: "test_schema",
+      jsonSchema: { type: "object" },
+      outputSchema: z.object({ value: z.string() }),
+      recoverOutput: () => ({ value: "recovered" }),
+      systemPrompt: "system",
+      userPrompt: "user"
+    });
+
+    expect(result).toMatchObject({ ok: true, data: { value: "recovered" } });
+  });
+
+  it("keeps an unrecoverable schema mismatch retryable", async () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "test-account");
+    vi.stubEnv("CLOUDFLARE_API_TOKEN", "test-cloudflare-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            output_text: JSON.stringify({ value: 42 }),
+            usage: {
+              input_tokens: 10,
+              output_tokens: 5,
+              total_tokens: 15
+            }
+          }),
+          { status: 200 }
+        )
+      )
+    );
+
+    const result = await requestStructuredAi({
+      schemaName: "test_schema",
+      jsonSchema: { type: "object" },
+      outputSchema: z.object({ value: z.string() }),
+      systemPrompt: "system",
+      userPrompt: "user"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "SCHEMA_VALIDATION_FAILED", retryable: true }
     });
   });
 
@@ -210,6 +288,41 @@ describe("requestStructuredAi", () => {
         code: "INVALID_RESPONSE",
         retryable: false
       }
+    });
+  });
+
+  it("reports an incomplete provider response as retryable", async () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "test-account");
+    vi.stubEnv("CLOUDFLARE_API_TOKEN", "test-cloudflare-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            status: "incomplete",
+            incomplete_details: { reason: "max_output_tokens" },
+            usage: {
+              input_tokens: 120,
+              output_tokens: MAX_AI_OUTPUT_TOKENS,
+              total_tokens: 120 + MAX_AI_OUTPUT_TOKENS
+            }
+          }),
+          { status: 200 }
+        )
+      )
+    );
+
+    const result = await requestStructuredAi({
+      schemaName: "test_schema",
+      jsonSchema: { type: "object" },
+      outputSchema: z.object({}),
+      systemPrompt: "system",
+      userPrompt: "user"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "OUTPUT_TRUNCATED", retryable: true }
     });
   });
 });

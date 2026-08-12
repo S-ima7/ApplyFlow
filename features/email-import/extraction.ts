@@ -5,6 +5,7 @@ import {
   emailExtractionEventTypes,
   emailExtractionFieldKeys,
   emailExtractionSchema,
+  recoverEmailAiExtraction,
   type EmailExtraction
 } from "@/features/email-import/schema";
 import {
@@ -189,7 +190,9 @@ export async function extractEmailWithAi(
   const request = buildEmailAiRequest(email, timezone, referenceNow);
   const result = await requestStructuredAi({
     ...request,
-    outputSchema: emailAiExtractionSchema
+    outputSchema: emailAiExtractionSchema,
+    recoverOutput: (value) =>
+      recoverEmailAiExtraction(value, { timezone })
   });
 
   if (!result.ok) {

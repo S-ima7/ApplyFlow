@@ -5,7 +5,10 @@ import {
   extractTextFromOpenAIResponse,
   normalizeEmailExtraction
 } from "@/features/email-import/extraction";
-import { emailAiExtractionSchema } from "@/features/email-import/schema";
+import {
+  emailAiExtractionSchema,
+  recoverEmailAiExtraction
+} from "@/features/email-import/schema";
 
 function validExtraction() {
   return {
@@ -57,6 +60,55 @@ describe("normalizeEmailExtraction", () => {
 });
 
 describe("strict AI extraction contract", () => {
+  it("recovers a useful result conservatively when provider JSON misses metadata", () => {
+    const recovered = recoverEmailAiExtraction(validExtraction(), {
+      timezone: "Asia/Tokyo"
+    });
+
+    expect(recovered).toMatchObject({
+      relevant: false,
+      eventType: "INFORMATION_ONLY",
+      companyName: "Example Inc.",
+      confidence: 0,
+      fieldConfidence: { companyName: 0 },
+      evidence: { companyName: null }
+    });
+  });
+
+  it("adds the user timezone to otherwise valid local datetimes", () => {
+    const value = validExtraction();
+    value.proposedSlots[0].startAt = "2026-07-12T19:00:00";
+    value.proposedSlots[0].endAt = "2026-07-12T20:00:00";
+
+    const recovered = recoverEmailAiExtraction(value, {
+      timezone: "Asia/Tokyo"
+    });
+
+    expect(recovered?.proposedSlots[0]).toMatchObject({
+      startAt: "2026-07-12T10:00:00.000Z",
+      endAt: "2026-07-12T11:00:00.000Z"
+    });
+  });
+
+  it("does not turn metadata-only JSON into a successful extraction", () => {
+    expect(
+      recoverEmailAiExtraction(
+        { confidence: 0.9, relevant: true, eventType: "CREATE_OR_UPDATE" },
+        { timezone: "Asia/Tokyo" }
+      )
+    ).toBeUndefined();
+  });
+
+  it.each([
+    { proposedSlots: [{}] },
+    { confirmedSlot: { startAt: "garbage" } },
+    { replyDeadline: "not-a-date" }
+  ])("does not recover malformed core data as an empty success", (value) => {
+    expect(
+      recoverEmailAiExtraction(value, { timezone: "Asia/Tokyo" })
+    ).toBeUndefined();
+  });
+
   it("includes large multibyte email input in the preflight usage ceiling", () => {
     const email = {
       id: "message-1",

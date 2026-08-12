@@ -1,7 +1,8 @@
 import { EMAIL_EXTRACTION_JSON_SCHEMA } from "@/features/email-import/extraction";
 import {
   emailAiExtractionSchema,
-  emailExtractionSchema
+  emailExtractionSchema,
+  recoverEmailAiExtraction
 } from "@/features/email-import/schema";
 import {
   browserMessageEventTypes,
@@ -61,6 +62,15 @@ export async function extractBrowserMessageWithAi(
     schemaName: "applyflow_browser_message_extraction",
     jsonSchema: BROWSER_MESSAGE_EXTRACTION_JSON_SCHEMA,
     outputSchema: browserMessageAiExtractionSchema,
+    recoverOutput: (value) => {
+      const recovered = recoverEmailAiExtraction(value, {
+        timezone,
+        eventTypes: browserMessageEventTypes,
+        fallbackEventType: "CREATE_OR_UPDATE"
+      });
+      const parsed = browserMessageAiExtractionSchema.safeParse(recovered);
+      return parsed.success ? parsed.data : undefined;
+    },
     systemPrompt: buildBrowserMessageSystemPrompt(),
     userPrompt: buildBrowserMessagePrompt(input, timezone, referenceNow)
   });

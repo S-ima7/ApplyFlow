@@ -166,7 +166,10 @@ export default async function EmailImportPage({
           <CardContent>
             {searchResult.status === "connected" ? (
               <div className="space-y-4">
-                <EmailMessageList messages={searchResult.messages} />
+                <EmailMessageList
+                  messages={searchResult.messages}
+                  timezone={user.timezone ?? "Asia/Tokyo"}
+                />
                 {pageTokens.length > 0 || searchResult.nextPageToken ? (
                   <div className="flex items-center justify-between border-t border-slate-200 pt-4">
                     {pageTokens.length > 0 ? (
