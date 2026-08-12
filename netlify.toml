@@ -3,6 +3,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  SECRETS_SCAN_OMIT_KEYS = "AI_PROVIDER,AI_MODEL,AI_REASONING_EFFORT,AI_DAILY_NEURON_BUDGET"
 
 [functions]
   directory = "netlify/functions"
