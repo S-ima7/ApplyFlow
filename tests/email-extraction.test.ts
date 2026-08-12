@@ -9,6 +9,8 @@ import {
   emailAiExtractionSchema,
   recoverEmailAiExtraction
 } from "@/features/email-import/schema";
+import { getEmailImportConfirmDefaults } from "@/features/email-import/defaults";
+import { autoRegistrationInput } from "@/features/email-import/automation";
 
 function validExtraction() {
   return {
@@ -88,6 +90,127 @@ describe("strict AI extraction contract", () => {
       startAt: "2026-07-12T10:00:00.000Z",
       endAt: "2026-07-12T11:00:00.000Z"
     });
+  });
+
+  it("unwraps known field envelopes without putting JSON in company fields", () => {
+    const wrapped = {
+      relevant: { value: true, confidence: 0.99, excerpt: "面接のご案内" },
+      eventType: {
+        value: "CREATE_OR_UPDATE",
+        confidence: 0.99,
+        excerpt: "面接のご案内"
+      },
+      companyName: JSON.stringify({
+        value: "株式会社MSOL Digital",
+        confidence: 0.99,
+        excerpt: "株式会社MSOL Digitalの採用担当"
+      }),
+      position: { value: "エンジニア", confidence: 0.99, excerpt: "募集職種" },
+      stageType: { value: "FIRST_INTERVIEW", confidence: 0.99, excerpt: "一次面接" },
+      stageName: { value: "一次面接", confidence: 0.99, excerpt: "一次面接" },
+      proposedSlots: { value: [], confidence: 0.99, excerpt: null },
+      confirmedSlot: {
+        value: {
+          startAt: "2026-08-20T19:00:00+09:00",
+          endAt: "2026-08-20T20:00:00+09:00",
+          timezone: "Asia/Tokyo"
+        },
+        confidence: 0.99,
+        excerpt: "日時 2026/8/20(木) 19:00 - 20:00"
+      },
+      replyDeadline: { value: null, confidence: 0.99, excerpt: null },
+      offerAcceptanceDeadline: { value: null, confidence: 0.99, excerpt: null },
+      meetingUrl: { value: null, confidence: 0.99, excerpt: null },
+      interviewerName: { value: null, confidence: 0.99, excerpt: null },
+      confidence: 0.99
+    };
+
+    const recovered = recoverEmailAiExtraction(wrapped, {
+      timezone: "Asia/Tokyo"
+    });
+
+    expect(recovered).toMatchObject({
+      companyName: "株式会社MSOL Digital",
+      confirmedSlot: {
+        startAt: "2026-08-20T19:00:00+09:00",
+        endAt: "2026-08-20T20:00:00+09:00"
+      },
+      confidence: 0.99,
+      fieldConfidence: { companyName: 0.99, confirmedSlot: 0.99 }
+    });
+    expect(autoRegistrationInput(recovered!, "Asia/Tokyo")).not.toBeNull();
+    expect(
+      autoRegistrationInput(
+        { ...recovered!, fieldConfidence: { ...recovered!.fieldConfidence, confirmedSlot: 0.89 } },
+        "Asia/Tokyo"
+      )
+    ).toBeNull();
+    expect(
+      autoRegistrationInput(
+        { ...recovered!, companyName: '{"value":"株式会社MSOL Digital","extra":true}' },
+        "Asia/Tokyo"
+      )
+    ).toBeNull();
+  });
+
+  it("fills an exact Japanese date range for review without inventing confidence", () => {
+    const recovered = recoverEmailAiExtraction(
+      {
+        companyName: "Example Inc.",
+        evidence: { confirmedSlot: "日時 2026/8/20(木) 19:00 - 20:00" }
+      },
+      { timezone: "Asia/Tokyo" }
+    );
+
+    expect(recovered?.confirmedSlot).toEqual({
+      startAt: "2026-08-20T10:00:00.000Z",
+      endAt: "2026-08-20T11:00:00.000Z",
+      timezone: "Asia/Tokyo"
+    });
+    expect(recovered?.fieldConfidence.confirmedSlot).toBe(0);
+  });
+
+  it("does not normalize an impossible Japanese date range", () => {
+    const recovered = recoverEmailAiExtraction(
+      {
+        companyName: "Example Inc.",
+        evidence: { confirmedSlot: "日時 2026/13/40 19:00 - 20:00" }
+      },
+      { timezone: "Asia/Tokyo" }
+    );
+
+    expect(recovered?.confirmedSlot.startAt).toBeNull();
+  });
+
+  it("formats confirmation datetimes in the user's timezone", () => {
+    const extraction = emailAiExtractionSchema.parse({
+      relevant: true,
+      eventType: "CREATE_OR_UPDATE",
+      ...validExtraction(),
+      confirmedSlot: {
+        startAt: "2026-08-20T10:00:00.000Z",
+        endAt: "2026-08-20T11:00:00.000Z",
+        timezone: "Asia/Tokyo"
+      },
+      fieldConfidence: Object.fromEntries(
+        [
+          "relevant", "eventType", "companyName", "position", "stageType",
+          "stageName", "proposedSlots", "confirmedSlot", "replyDeadline",
+          "offerAcceptanceDeadline", "meetingUrl", "interviewerName"
+        ].map((key) => [key, 0.99])
+      ),
+      evidence: Object.fromEntries(
+        [
+          "relevant", "eventType", "companyName", "position", "stageType",
+          "stageName", "proposedSlots", "confirmedSlot", "replyDeadline",
+          "offerAcceptanceDeadline", "meetingUrl", "interviewerName"
+        ].map((key) => [key, null])
+      )
+    });
+
+    const defaults = getEmailImportConfirmDefaults(extraction, "Asia/Tokyo");
+    expect(defaults.confirmedStartAt).toBe("2026-08-20T19:00");
+    expect(defaults.confirmedEndAt).toBe("2026-08-20T20:00");
   });
 
   it("does not turn metadata-only JSON into a successful extraction", () => {

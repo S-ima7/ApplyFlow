@@ -5,7 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmailImportConfirmForm } from "@/features/email-import/components/email-import-confirm-form";
 import { getEmailImportConfirmDefaults } from "@/features/email-import/defaults";
 import { normalizeEmailExtraction } from "@/features/email-import/extraction";
-import { getEmailExtractionForConfirmation } from "@/features/email-import/queries";
+import {
+  getEmailExtractionForConfirmation,
+  getEmailImportApplicationResolution
+} from "@/features/email-import/queries";
 import { requireUser } from "@/lib/auth-guard";
 import { formatDateTime } from "@/lib/date";
 
@@ -23,16 +26,32 @@ export default async function EmailImportConfirmPage({
   }
 
   const normalized = normalizeEmailExtraction(extraction.extractedJson);
+  const applicationResolution = normalized.ok
+    ? await getEmailImportApplicationResolution(user.id, normalized.data)
+    : null;
   const automationReview =
     extraction.automationJob?.status === "REVIEW_REQUIRED" && normalized.ok
       ? extraction.automationJob
       : null;
   const matchedApplication = automationReview?.matchedApplication ?? null;
+  const manualMatch = applicationResolution?.applications.find(
+    (application) =>
+      application.id === applicationResolution.recommendedApplicationId ||
+      application.matchKind === "POSSIBLE"
+  );
+  const canCreateNewApplication =
+    applicationResolution?.resolution === "CREATE_NEW" ||
+    applicationResolution?.resolution === "CREATE_WITH_EXISTING_COMPANY";
   const canUseCreateForm =
-    !automationReview ||
-    (normalized.ok &&
-      normalized.data.eventType === "CREATE_OR_UPDATE" &&
-      !matchedApplication);
+    normalized.ok &&
+    normalized.data.eventType === "CREATE_OR_UPDATE" &&
+    !matchedApplication &&
+    canCreateNewApplication;
+  const manualTargetReview =
+    normalized.ok &&
+    !automationReview &&
+    !extraction.confirmedAt &&
+    !canUseCreateForm;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -110,6 +129,30 @@ export default async function EmailImportConfirmPage({
         </Card>
       ) : null}
 
+      {manualTargetReview ? (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-semibold text-amber-950">既存応募の確認が必要です</p>
+              <p className="text-sm text-amber-800">
+                日程変更・取消・既存応募の候補は、新しい応募を作らず応募詳細から確認してください。
+              </p>
+              {manualMatch ? (
+                <p className="mt-1 text-sm text-amber-900">
+                  候補: {manualMatch.companyName} / {manualMatch.position}
+                </p>
+              ) : null}
+            </div>
+            <Link
+              href={manualMatch ? `/applications/${manualMatch.id}` : "/applications"}
+              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-center text-sm font-semibold text-amber-950 hover:bg-amber-100"
+            >
+              {manualMatch ? "応募詳細で確認" : "応募先一覧で確認"}
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>{canUseCreateForm ? "登録内容" : "確認方法"}</CardTitle>
@@ -118,7 +161,10 @@ export default async function EmailImportConfirmPage({
           {normalized.ok && canUseCreateForm ? (
             <EmailImportConfirmForm
               extractionResultId={extraction.id}
-              defaultValues={getEmailImportConfirmDefaults(normalized.data)}
+              defaultValues={getEmailImportConfirmDefaults(
+                normalized.data,
+                user.timezone ?? "Asia/Tokyo"
+              )}
               fieldConfidence={normalized.data.fieldConfidence}
               evidence={normalized.data.evidence}
             />

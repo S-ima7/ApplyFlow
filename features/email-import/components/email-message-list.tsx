@@ -68,13 +68,19 @@ export function EmailMessageList({ messages, timezone }: EmailMessageListProps) 
                   return;
                 }
 
+                if (result.data.applicationId) {
+                  router.push(`/applications/${result.data.applicationId}`);
+                  router.refresh();
+                  return;
+                }
+
                 router.push(`/email-import/${result.data.extractionId}/confirm`);
                 router.refresh();
               });
             }}
           >
             <Sparkles className="h-4 w-4" />
-            {isPending && pendingId === mail.id ? "抽出中" : "抽出"}
+            {isPending && pendingId === mail.id ? "処理中" : "自動反映"}
           </Button>
         </div>
       ))}

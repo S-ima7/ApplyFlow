@@ -20,6 +20,7 @@ import {
   type EmailAutomationTargetContext
 } from "@/features/email-monitor/policy";
 import type { EmailMonitorExtraction } from "@/features/email-monitor/schema";
+import type { EmailAiExtraction } from "@/features/email-import/schema";
 import { prisma } from "@/lib/prisma";
 
 const INACTIVE_INTERVIEW_STATUSES = [
@@ -128,7 +129,86 @@ export async function decideAndApplyEmailAutomation(input: {
     await applySafeChange(tx, {
       ...input,
       decision,
-      target: target!
+      target: target!,
+      tracking: { kind: "monitor", jobId: input.jobId }
+    });
+    return decision;
+  });
+}
+
+export async function decideAndApplyEmailImportAutomation(input: {
+  emailImportId: string;
+  extractionResultId: string;
+  userId: string;
+  userTimezone: string;
+  extraction: EmailAiExtraction;
+}) {
+  if (input.extraction.eventType !== "CREATE_OR_UPDATE") {
+    return {
+      action: "REVIEW_REQUIRED" as const,
+      reason: "NO_ACTIONABLE_CHANGE" as const
+    };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "EmailImport"
+      WHERE "id" = ${input.emailImportId} AND "userId" = ${input.userId}
+      FOR UPDATE
+    `;
+    const processed = await tx.aiExtractionResult.findFirst({
+      where: {
+        emailImportId: input.emailImportId,
+        id: { not: input.extractionResultId },
+        confirmedAt: { not: null },
+        createdApplicationId: { not: null }
+      },
+      select: { createdApplicationId: true }
+    });
+    if (processed?.createdApplicationId) {
+      return {
+        action: "UNCHANGED" as const,
+        applicationId: processed.createdApplicationId
+      };
+    }
+
+    const applications = await tx.application.findMany({
+      where: { userId: input.userId, deletedAt: null },
+      select: {
+        id: true,
+        position: true,
+        company: { select: { name: true } }
+      }
+    });
+    const candidates = applications.map((application) => ({
+      id: application.id,
+      position: application.position,
+      companyName: application.company.name
+    }));
+    const extraction = input.extraction;
+    const exactApplicationId = findExactApplicationId(extraction, candidates);
+    const target = exactApplicationId
+      ? await loadTargetContext(
+          tx,
+          input.userId,
+          exactApplicationId,
+          extraction
+        )
+      : null;
+    const decision = decideEmailAutomation(extraction, candidates, target);
+    if (decision.action !== "AUTO_APPLY") return decision;
+
+    await applySafeChange(tx, {
+      userId: input.userId,
+      userTimezone: input.userTimezone,
+      extraction,
+      decision,
+      target: target!,
+      tracking: {
+        kind: "email-import",
+        extractionResultId: input.extractionResultId
+      }
     });
     return decision;
   });
@@ -228,19 +308,19 @@ function hasManualDataConflict(
     return true;
   }
 
+  const wantsScheduleChange =
+    Boolean(extraction.confirmedSlot.startAt) ||
+    extraction.proposedSlots.length > 0;
   if (
-    extraction.proposedSlots.length > 0 &&
+    wantsScheduleChange &&
     interview.proposedSlots.some(
-      (slot) => !slot.source?.startsWith("email_monitor:")
+      (slot) => !isAutomatedEmailSlotSource(slot.source)
     )
   ) {
     return true;
   }
 
   const previous = readAutomationSnapshot(previousAfterJson);
-  const wantsScheduleChange =
-    Boolean(extraction.confirmedSlot.startAt) ||
-    extraction.proposedSlots.length > 0;
   const confirmedConflict =
     Boolean(
       wantsScheduleChange &&
@@ -308,12 +388,14 @@ function hasStageManualDataConflict(
 async function applySafeChange(
   tx: Prisma.TransactionClient,
   input: {
-    jobId: string;
     userId: string;
     userTimezone: string;
     extraction: EmailMonitorExtraction;
     decision: Extract<EmailAutomationDecision, { action: "AUTO_APPLY" }>;
     target: EmailAutomationTargetContext;
+    tracking:
+      | { kind: "monitor"; jobId: string }
+      | { kind: "email-import"; extractionResultId: string };
   }
 ) {
   const { extraction, decision } = input;
@@ -401,7 +483,10 @@ async function applySafeChange(
     await tx.proposedSlot.updateMany({
       where: {
         interviewId: interview.id,
-        source: { startsWith: "email_monitor:" },
+        OR: [
+          { source: { startsWith: "email_monitor:" } },
+          { source: { startsWith: "email_import:" } }
+        ],
         deletedAt: null,
         status: { in: [ProposedSlotStatus.PENDING, ProposedSlotStatus.CONFIRMED] }
       },
@@ -459,7 +544,10 @@ async function applySafeChange(
           userId: input.userId,
           interviewId: interview!.id,
           ...slot,
-          source: `email_monitor:${input.jobId}`
+          source:
+            input.tracking.kind === "monitor"
+              ? `email_monitor:${input.tracking.jobId}`
+              : `email_import:${input.tracking.extractionResultId}`
         }))
       });
     }
@@ -500,16 +588,18 @@ async function applySafeChange(
     interview,
     deadlines: createdDeadlineIds
   });
-  await tx.emailAutomationChange.create({
-    data: {
-      jobId: input.jobId,
-      userId: input.userId,
-      applicationId: application.id,
-      interviewId: interview?.id,
-      beforeJson,
-      afterJson
-    }
-  });
+  if (input.tracking.kind === "monitor") {
+    await tx.emailAutomationChange.create({
+      data: {
+        jobId: input.tracking.jobId,
+        userId: input.userId,
+        applicationId: application.id,
+        interviewId: interview?.id,
+        beforeJson,
+        afterJson
+      }
+    });
+  }
 
   const logs = [
     ...(stageCreated
@@ -518,7 +608,10 @@ async function applySafeChange(
             userId: input.userId,
             applicationId: application.id,
             action: ActivityAction.STAGE_CREATED,
-            message: "メール監視から選考フェーズを追加しました"
+            message:
+              input.tracking.kind === "monitor"
+                ? "メール監視から選考フェーズを追加しました"
+                : "Gmail抽出から選考フェーズを追加しました"
           }
         ]
       : []),
@@ -531,8 +624,12 @@ async function applySafeChange(
               ? ActivityAction.INTERVIEW_CREATED
               : ActivityAction.INTERVIEW_STATUS_CHANGED,
             message: interviewCreated
-              ? "メール監視から面接予定を追加しました"
-              : "メール監視から面接予定を更新しました"
+              ? input.tracking.kind === "monitor"
+                ? "メール監視から面接予定を追加しました"
+                : "Gmail抽出から面接予定を追加しました"
+              : input.tracking.kind === "monitor"
+                ? "メール監視から面接予定を更新しました"
+                : "Gmail抽出から面接予定を更新しました"
           }
         ]
       : []),
@@ -542,7 +639,7 @@ async function applySafeChange(
             userId: input.userId,
             applicationId: application.id,
             action: ActivityAction.DEADLINE_CREATED,
-            message: `メール監視から期限を${createdDeadlineIds.length}件追加しました`
+            message: `${input.tracking.kind === "monitor" ? "メール監視" : "Gmail抽出"}から期限を${createdDeadlineIds.length}件追加しました`
           }
         ]
       : [])
@@ -551,18 +648,36 @@ async function applySafeChange(
     await tx.activityLog.createMany({ data: logs });
   }
 
-  await tx.emailAutomationJob.update({
-    where: { id: input.jobId },
-    data: {
-      status: EmailAutomationJobStatus.AUTO_APPLIED,
-      matchedApplicationId: application.id,
-      errorCode: null,
-      errorMessage: null,
-      leaseUntil: null,
-      nextAttemptAt: null,
-      processedAt: new Date()
-    }
-  });
+  if (input.tracking.kind === "monitor") {
+    await tx.emailAutomationJob.update({
+      where: { id: input.tracking.jobId },
+      data: {
+        status: EmailAutomationJobStatus.AUTO_APPLIED,
+        matchedApplicationId: application.id,
+        errorCode: null,
+        errorMessage: null,
+        leaseUntil: null,
+        nextAttemptAt: null,
+        processedAt: new Date()
+      }
+    });
+  } else {
+    await tx.aiExtractionResult.update({
+      where: { id: input.tracking.extractionResultId },
+      data: {
+        reviewedJson: extraction as Prisma.InputJsonValue,
+        confirmedAt: new Date(),
+        createdApplicationId: application.id
+      }
+    });
+  }
+}
+
+function isAutomatedEmailSlotSource(source: string | null) {
+  return Boolean(
+    source?.startsWith("email_monitor:") ||
+      source?.startsWith("email_import:")
+  );
 }
 
 function findExactApplicationId(

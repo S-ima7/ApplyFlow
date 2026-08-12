@@ -18,7 +18,7 @@ import {
 } from "@/lib/ai/responses";
 import type { GmailFullMessage } from "@/lib/gmail";
 
-export const EMAIL_EXTRACTION_PROMPT_VERSION = "2026-07-27.v3";
+export const EMAIL_EXTRACTION_PROMPT_VERSION = "2026-08-12.v4";
 
 export type EmailExtractionResult =
   | {
@@ -283,6 +283,7 @@ function buildSystemPrompt() {
     "Distinguish proposed candidate times from a single confirmed time. Do not copy the confirmed time into proposedSlots.",
     "Resolve relative dates from the email sent datetime first, then the current reference datetime. Use the user timezone when no timezone is written.",
     "Normalize every datetime to ISO 8601 with an explicit numeric offset.",
+    "Return each data field as its schema scalar, object, or array value. Never wrap a field in {value, confidence, excerpt} and never JSON-stringify a field value; put metadata only in fieldConfidence and evidence.",
     "For every field including relevant and eventType, provide calibrated confidence and a short supporting excerpt. Use null evidence and low confidence when unknown."
   ].join(" ");
 }
