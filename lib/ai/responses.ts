@@ -3,7 +3,7 @@ import type { z } from "zod";
 export const AI_PROVIDER = "cloudflare-workers-ai" as const;
 export const DEFAULT_AI_MODEL = "@cf/openai/gpt-oss-120b";
 export const DEFAULT_AI_REASONING_EFFORT = "high";
-export const MAX_AI_OUTPUT_TOKENS = 4_096;
+export const MAX_AI_OUTPUT_TOKENS = 8_192;
 export const CLOUDFLARE_INPUT_NEURONS_PER_MILLION_TOKENS = 31_818;
 export const CLOUDFLARE_OUTPUT_NEURONS_PER_MILLION_TOKENS = 68_182;
 const CLOUDFLARE_SERVER_FRAMING_TOKEN_ALLOWANCE = 2_048;
@@ -24,6 +24,7 @@ export type AiErrorCode =
   | "PROVIDER_UNAVAILABLE"
   | "PROVIDER_ERROR"
   | "INVALID_RESPONSE"
+  | "OUTPUT_TRUNCATED"
   | "INVALID_JSON"
   | "SCHEMA_VALIDATION_FAILED";
 
@@ -51,6 +52,10 @@ export type StructuredAiResult<T> =
     };
 
 export type CloudflareResponsePayload = {
+  status?: string;
+  incomplete_details?: {
+    reason?: string;
+  };
   output_text?: string;
   output?: Array<{
     content?: Array<{
@@ -72,6 +77,7 @@ export type StructuredAiRequest<T> = {
   systemPrompt: string;
   userPrompt: string;
   timeoutMs?: number;
+  recoverOutput?: (value: unknown) => T | undefined;
 };
 
 export async function requestStructuredAi<T>(
@@ -173,6 +179,15 @@ export async function requestStructuredAi<T>(
     );
   }
 
+  if (payload.status === "incomplete") {
+    return failure(
+      "OUTPUT_TRUNCATED",
+      "AI抽出結果が途中で終了しました。もう一度抽出してください",
+      true,
+      response.status
+    );
+  }
+
   const text = extractTextFromAiResponse(payload);
   const usage = parseUsage(payload.usage);
 
@@ -185,24 +200,28 @@ export async function requestStructuredAi<T>(
     );
   }
 
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
+  const json = parseAiJson(text);
+  if (!json.ok) {
     return failure(
       "INVALID_JSON",
-      "AI抽出結果のJSON解析に失敗しました",
-      false,
+      "AI抽出結果が途中で終了した可能性があります。もう一度抽出してください",
+      true,
       response.status
     );
   }
 
-  const parsed = request.outputSchema.safeParse(json);
+  let parsed = request.outputSchema.safeParse(json.value);
+  if (!parsed.success && request.recoverOutput) {
+    const recovered = request.recoverOutput(json.value);
+    if (recovered !== undefined) {
+      parsed = request.outputSchema.safeParse(recovered);
+    }
+  }
   if (!parsed.success) {
     return failure(
       "SCHEMA_VALIDATION_FAILED",
-      "AI抽出結果の形式が不正です",
-      false,
+      "AI抽出結果の形式が不正です。もう一度抽出してください",
+      true,
       response.status
     );
   }
@@ -216,6 +235,30 @@ export async function requestStructuredAi<T>(
       usage
     }
   };
+}
+
+export function parseAiJson(text: string):
+  | { ok: true; value: unknown }
+  | { ok: false } {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1];
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  const embedded =
+    firstBrace >= 0 && lastBrace > firstBrace
+      ? trimmed.slice(firstBrace, lastBrace + 1)
+      : undefined;
+
+  for (const candidate of [trimmed, fenced, embedded]) {
+    if (!candidate) continue;
+    try {
+      return { ok: true, value: JSON.parse(candidate) as unknown };
+    } catch {
+      continue;
+    }
+  }
+
+  return { ok: false };
 }
 
 export function estimateStructuredAiUsageCeiling(

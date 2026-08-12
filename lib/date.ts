@@ -62,6 +62,32 @@ export function formatDateTime(value: Date | string | null | undefined) {
   return format(new Date(value), "yyyy/MM/dd HH:mm");
 }
 
+export function formatDateTimeInTimezone(
+  value: Date | string | null | undefined,
+  timezone: string
+) {
+  if (!value) {
+    return "-";
+  }
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  return `${values.year}/${values.month}/${values.day} ${values.hour}:${values.minute}`;
+}
+
 export function formatDate(value: Date | string | null | undefined) {
   if (!value) {
     return "-";
