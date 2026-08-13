@@ -1,16 +1,18 @@
 "use server";
 
-import { Prisma } from "@prisma/client";
+import { EmailAutomationJobStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth-guard";
 import { prisma } from "@/lib/prisma";
 import { getGmailMessage } from "@/lib/gmail";
-import { extractEmailWithAi } from "@/features/email-import/extraction";
-import { tryAutoCreateEmailImportApplication } from "@/features/email-import/automation";
-import { decideAndApplyEmailImportAutomation } from "@/features/email-monitor/automation";
+import { buildEmailMessageDigest } from "@/features/email-monitor/digest";
 import {
-  emailAiExtractionSchema,
+  dispatchEmailMonitorBackground,
+  getInternalSiteOrigin
+} from "@/features/email-monitor/internal-auth";
+import { MANUAL_EMAIL_IMPORT_JOB_CODE } from "@/features/email-monitor/constants";
+import {
   emailExtractionSchema,
   emailImportConfirmSchema,
   type EmailImportConfirmInput
@@ -36,10 +38,15 @@ function failFromZod(error: z.ZodError): EmailImportActionResult<never> {
 
 export async function importAndExtractEmail(
   gmailMessageId: string
-): Promise<
-  EmailImportActionResult<{ extractionId: string; applicationId?: string }>
-> {
+): Promise<EmailImportActionResult<{ jobId: string }>> {
   const user = await requireUser();
+  const origin = getInternalSiteOrigin();
+  if (!origin) {
+    return {
+      ok: false,
+      message: "Background Functionの送信先URLが設定されていません"
+    };
+  }
   const gmail = await getGmailMessage(user.id, gmailMessageId);
 
   if (gmail.status !== "connected" || !gmail.gmailMessage) {
@@ -48,104 +55,168 @@ export async function importAndExtractEmail(
       message: gmail.message ?? "Gmail本文を取得できませんでした"
     };
   }
+  const message = gmail.gmailMessage;
 
-  const emailImport = await prisma.emailImport.upsert({
-    where: {
-      userId_gmailMessageId: {
+  const digest = buildEmailMessageDigest(message);
+  const queued = await prisma.$transaction(async (tx) => {
+    const emailImport = await tx.emailImport.upsert({
+      where: {
+        userId_gmailMessageId: {
+          userId: user.id,
+          gmailMessageId: message.id
+        }
+      },
+      update: {
+        gmailThreadId: message.threadId,
+        subject: message.subject,
+        fromAddress: message.fromAddress,
+        snippet: message.snippet,
+        sentAt: message.sentAt,
+        importedAt: new Date()
+      },
+      create: {
         userId: user.id,
-        gmailMessageId: gmail.gmailMessage.id
+        gmailMessageId: message.id,
+        gmailThreadId: message.threadId,
+        subject: message.subject,
+        fromAddress: message.fromAddress,
+        snippet: message.snippet,
+        sentAt: message.sentAt
       }
-    },
-    update: {
-      gmailThreadId: gmail.gmailMessage.threadId,
-      subject: gmail.gmailMessage.subject,
-      fromAddress: gmail.gmailMessage.fromAddress,
-      snippet: gmail.gmailMessage.snippet,
-      sentAt: gmail.gmailMessage.sentAt,
-      importedAt: new Date()
-    },
-    create: {
-      userId: user.id,
-      gmailMessageId: gmail.gmailMessage.id,
-      gmailThreadId: gmail.gmailMessage.threadId,
-      subject: gmail.gmailMessage.subject,
-      fromAddress: gmail.gmailMessage.fromAddress,
-      snippet: gmail.gmailMessage.snippet,
-      sentAt: gmail.gmailMessage.sentAt
+    });
+    const existing = await tx.emailAutomationJob.findUnique({
+      where: { emailImportId: emailImport.id }
+    });
+    if (
+      existing &&
+      existing.messageDigest === digest &&
+      (existing.status === EmailAutomationJobStatus.AUTO_APPLIED ||
+        existing.status === EmailAutomationJobStatus.REVIEW_REQUIRED)
+    ) {
+      return { jobId: existing.id, dispatch: false };
     }
+    if (
+      existing &&
+      existing.messageDigest === digest &&
+      existing.status === EmailAutomationJobStatus.PROCESSING &&
+      (!existing.leaseUntil || existing.leaseUntil > new Date())
+    ) {
+      return { jobId: existing.id, dispatch: false };
+    }
+
+    const job = existing
+      ? await tx.emailAutomationJob.update({
+          where: { id: existing.id },
+          data: {
+            messageDigest: digest,
+            status: EmailAutomationJobStatus.PENDING,
+            attempts: 0,
+            leaseUntil: null,
+            nextAttemptAt: null,
+            errorCode: MANUAL_EMAIL_IMPORT_JOB_CODE,
+            errorMessage: null,
+            extractionResultId: null,
+            matchedApplicationId: null,
+            processedAt: null
+          }
+        })
+      : await tx.emailAutomationJob.create({
+          data: {
+            userId: user.id,
+            emailImportId: emailImport.id,
+            gmailMessageId: message.id,
+            messageDigest: digest,
+            errorCode: MANUAL_EMAIL_IMPORT_JOB_CODE
+          }
+        });
+    return { jobId: job.id, dispatch: true };
   });
 
-  const extraction = await extractEmailWithAi(
-    gmail.gmailMessage,
-    user.timezone ?? "Asia/Tokyo"
-  );
-
-  if (!extraction.ok) {
-    return extraction;
-  }
-
-  const created = await prisma.aiExtractionResult.create({
-    data: {
-      userId: user.id,
-      emailImportId: emailImport.id,
-      extractedJson: extraction.data as Prisma.InputJsonValue,
-      confidence: extraction.data.confidence,
-      modelName: extraction.metadata.model,
-      promptVersion: extraction.metadata.promptVersion
-    }
-  });
-
-  const timezone = user.timezone ?? "Asia/Tokyo";
-  const automationExtraction = emailAiExtractionSchema.safeParse(
-    extraction.data
-  );
-  const existingApplicationDecision = automationExtraction.success
-    ? await decideAndApplyEmailImportAutomation({
-        emailImportId: emailImport.id,
-        extractionResultId: created.id,
+  if (queued.dispatch) {
+    try {
+      await dispatchEmailMonitorBackground({
+        origin,
         userId: user.id,
-        userTimezone: timezone,
-        extraction: automationExtraction.data
-      })
-    : null;
-  const existingApplicationId =
-    existingApplicationDecision?.action === "AUTO_APPLY"
-      ? existingApplicationDecision.applicationId
-      : existingApplicationDecision?.action === "UNCHANGED"
-        ? existingApplicationDecision.applicationId
-        : null;
-  const createdApplication = existingApplicationId || !automationExtraction.success
-    ? null
-    : await tryAutoCreateEmailImportApplication({
-        userId: user.id,
-        timezone,
-        emailImportId: emailImport.id,
-        extractionResultId: created.id,
-        extraction: automationExtraction.data
+        manualJobId: queued.jobId
       });
-  const applicationId =
-    existingApplicationId ?? createdApplication?.applicationId;
+    } catch {
+      await prisma.emailAutomationJob.update({
+        where: { id: queued.jobId },
+        data: {
+          status: EmailAutomationJobStatus.FAILED,
+          errorCode: "BACKGROUND_DISPATCH_FAILED",
+          errorMessage: "バックグラウンド処理を開始できませんでした",
+          processedAt: new Date()
+        }
+      });
+      return {
+        ok: false,
+        message: "バックグラウンド処理を開始できませんでした"
+      };
+    }
+  }
 
   revalidatePath("/email-import");
-  if (applicationId) {
-    revalidatePath("/dashboard");
-    revalidatePath("/applications");
-    revalidatePath(`/applications/${applicationId}`);
-    revalidatePath("/calendar");
-    revalidatePath("/waiting");
-    revalidatePath("/deadlines");
-  }
 
   return {
     ok: true,
-    data: {
-      extractionId: created.id,
-      ...(applicationId ? { applicationId } : {})
-    },
-    message: applicationId
-      ? "メールから応募情報を自動反映しました"
-      : "メールから情報を抽出しました"
+    data: { jobId: queued.jobId },
+    message: queued.dispatch
+      ? "自動反映を受け付けました"
+      : "このメールは処理済みです"
   };
+}
+
+export async function getEmailImportJobResult(
+  jobId: string
+): Promise<
+  EmailImportActionResult<
+    | { status: "PROCESSING" }
+    | { status: "AUTO_APPLIED"; applicationId: string }
+    | { status: "REVIEW_REQUIRED"; extractionId: string }
+  >
+> {
+  const user = await requireUser();
+  const job = await prisma.emailAutomationJob.findFirst({
+    where: { id: jobId, userId: user.id },
+    select: {
+      status: true,
+      errorMessage: true,
+      extractionResultId: true,
+      matchedApplicationId: true,
+      extractionResult: { select: { createdApplicationId: true } }
+    }
+  });
+  if (!job) return { ok: false, message: "処理状況が見つかりません" };
+
+  const applicationId =
+    job.matchedApplicationId ?? job.extractionResult?.createdApplicationId;
+  if (job.status === EmailAutomationJobStatus.AUTO_APPLIED && applicationId) {
+    return {
+      ok: true,
+      data: { status: "AUTO_APPLIED", applicationId }
+    };
+  }
+  if (
+    (job.status === EmailAutomationJobStatus.REVIEW_REQUIRED ||
+      job.status === EmailAutomationJobStatus.IGNORED) &&
+    job.extractionResultId
+  ) {
+    return {
+      ok: true,
+      data: {
+        status: "REVIEW_REQUIRED",
+        extractionId: job.extractionResultId
+      }
+    };
+  }
+  if (job.status === EmailAutomationJobStatus.FAILED) {
+    return {
+      ok: false,
+      message: job.errorMessage ?? "メールの自動反映に失敗しました"
+    };
+  }
+  return { ok: true, data: { status: "PROCESSING" } };
 }
 
 export async function confirmEmailImportRegistration(

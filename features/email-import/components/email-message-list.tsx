@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { importAndExtractEmail } from "@/features/email-import/actions";
+import {
+  getEmailImportJobResult,
+  importAndExtractEmail
+} from "@/features/email-import/actions";
 import type { GmailMessageSummary } from "@/lib/gmail";
 import { formatDateTimeInTimezone } from "@/lib/date";
 
@@ -18,6 +21,7 @@ export function EmailMessageList({ messages, timezone }: EmailMessageListProps) 
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   if (messages.length === 0) {
@@ -27,7 +31,13 @@ export function EmailMessageList({ messages, timezone }: EmailMessageListProps) 
   return (
     <div className="space-y-3">
       {message ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div
+          className={
+            hasError
+              ? "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              : "rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800"
+          }
+        >
           {message}
         </div>
       ) : null}
@@ -52,38 +62,71 @@ export function EmailMessageList({ messages, timezone }: EmailMessageListProps) 
             disabled={isPending}
             onClick={() => {
               setMessage(null);
+              setHasError(false);
               setPendingId(mail.id);
               startTransition(async () => {
-                const result = await importAndExtractEmail(mail.id);
+                try {
+                  const result = await importAndExtractEmail(mail.id);
 
-                if (!result.ok) {
-                  setMessage(result.message);
-                  setPendingId(null);
-                  return;
-                }
+                  if (!result.ok) {
+                    setHasError(true);
+                    setMessage(result.message);
+                    return;
+                  }
 
-                if (!result.data?.extractionId) {
-                  setMessage("抽出結果を読み取れませんでした");
-                  setPendingId(null);
-                  return;
-                }
+                  if (!result.data?.jobId) {
+                    setHasError(true);
+                    setMessage("処理の受付結果を読み取れませんでした");
+                    return;
+                  }
 
-                if (result.data.applicationId) {
-                  router.push(`/applications/${result.data.applicationId}`);
+                  setMessage("AIがメールを解析しています。このままお待ちください。");
+                  for (let attempt = 0; attempt < 45; attempt += 1) {
+                    const job = await getEmailImportJobResult(result.data.jobId);
+                    if (!job.ok) {
+                      setHasError(true);
+                      setMessage(job.message);
+                      return;
+                    }
+                    if (job.data?.status === "AUTO_APPLIED") {
+                      router.push(`/applications/${job.data.applicationId}`);
+                      router.refresh();
+                      return;
+                    }
+                    if (job.data?.status === "REVIEW_REQUIRED") {
+                      router.push(
+                        `/email-import/${job.data.extractionId}/confirm`
+                      );
+                      router.refresh();
+                      return;
+                    }
+                    await wait(2_000);
+                  }
+
+                  setMessage(
+                    "処理はバックグラウンドで継続しています。結果は上の処理一覧に表示されます。"
+                  );
                   router.refresh();
-                  return;
+                } catch {
+                  setHasError(true);
+                  setMessage(
+                    "処理状況を取得できませんでした。再読み込みして処理一覧を確認してください。"
+                  );
+                } finally {
+                  setPendingId(null);
                 }
-
-                router.push(`/email-import/${result.data.extractionId}/confirm`);
-                router.refresh();
               });
             }}
           >
             <Sparkles className="h-4 w-4" />
-            {isPending && pendingId === mail.id ? "処理中" : "自動反映"}
+            {isPending && pendingId === mail.id ? "自動反映中" : "自動反映"}
           </Button>
         </div>
       ))}
     </div>
   );
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

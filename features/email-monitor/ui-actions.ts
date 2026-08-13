@@ -8,6 +8,7 @@ import {
 } from "@/features/email-monitor/config";
 import { requireUser } from "@/lib/auth-guard";
 import { getGmailConnectionStatus } from "@/lib/gmail";
+import { getInternalSiteOrigin } from "@/features/email-monitor/internal-auth";
 
 const emailMonitorSettingsSchema = z.object({
   enabled: z.boolean(),
@@ -82,21 +83,6 @@ export async function runEmailMonitorNowAction() {
       ok: false as const,
       message: getSafeActionMessage(error, "メール監視を開始できませんでした")
     };
-  }
-}
-
-function getInternalSiteOrigin() {
-  const candidate =
-    process.env.DEPLOY_PRIME_URL ??
-    process.env.URL ??
-    process.env.AUTH_URL ??
-    process.env.NEXTAUTH_URL;
-  if (!candidate) return null;
-
-  try {
-    return new URL(candidate).origin;
-  } catch {
-    return null;
   }
 }
 

@@ -1,5 +1,8 @@
 import { EmailAutomationJobStatus } from "@prisma/client";
-import { DEFAULT_EMAIL_MONITOR_QUERY } from "@/features/email-monitor/constants";
+import {
+  DEFAULT_EMAIL_MONITOR_QUERY,
+  MANUAL_EMAIL_IMPORT_JOB_CODE
+} from "@/features/email-monitor/constants";
 import { dispatchEmailMonitorBackground } from "@/features/email-monitor/internal-auth";
 import { consumeAiNeuronReservationAsUsedInTransaction } from "@/features/email-monitor/token-budget";
 import { prisma } from "@/lib/prisma";
@@ -67,16 +70,23 @@ export async function saveEmailMonitorConfig(
     });
 
     if (transition.reviewPendingJobs) {
+      const queuedMonitorJobs = {
+        userId,
+        status: {
+          in: [
+            EmailAutomationJobStatus.PENDING,
+            EmailAutomationJobStatus.PROCESSING,
+            EmailAutomationJobStatus.RETRY_WAIT
+          ]
+        },
+        OR: [
+          { errorCode: null },
+          { errorCode: { not: MANUAL_EMAIL_IMPORT_JOB_CODE } }
+        ]
+      };
       const affectedJobs = await tx.emailAutomationJob.findMany({
         where: {
-          userId,
-          status: {
-            in: [
-              EmailAutomationJobStatus.PENDING,
-              EmailAutomationJobStatus.PROCESSING,
-              EmailAutomationJobStatus.RETRY_WAIT
-            ]
-          },
+          ...queuedMonitorJobs,
           aiReservedNeurons: { gt: 0 }
         },
         select: { id: true }
@@ -85,16 +95,7 @@ export async function saveEmailMonitorConfig(
         await consumeAiNeuronReservationAsUsedInTransaction(tx, job.id);
       }
       await tx.emailAutomationJob.updateMany({
-        where: {
-          userId,
-          status: {
-            in: [
-              EmailAutomationJobStatus.PENDING,
-              EmailAutomationJobStatus.PROCESSING,
-              EmailAutomationJobStatus.RETRY_WAIT
-            ]
-          }
-        },
+        where: queuedMonitorJobs,
         data: {
           status: EmailAutomationJobStatus.REVIEW_REQUIRED,
           errorCode: transition.reviewReason,

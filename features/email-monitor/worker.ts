@@ -6,7 +6,8 @@ import { decideAndApplyEmailAutomation } from "@/features/email-monitor/automati
 import {
   EMAIL_MONITOR_BATCH_SIZE,
   EMAIL_MONITOR_LEASE_MS,
-  EMAIL_MONITOR_MAX_ATTEMPTS
+  EMAIL_MONITOR_MAX_ATTEMPTS,
+  MANUAL_EMAIL_IMPORT_JOB_CODE
 } from "@/features/email-monitor/constants";
 import { buildEmailMessageDigest } from "@/features/email-monitor/digest";
 import {
@@ -226,6 +227,14 @@ async function claimNextEmailAutomationJob(userId: string | undefined, now: Date
 
   const claimable = {
     attempts: { lt: EMAIL_MONITOR_MAX_ATTEMPTS },
+    AND: [
+      {
+        OR: [
+          { errorCode: null },
+          { errorCode: { not: MANUAL_EMAIL_IMPORT_JOB_CODE } }
+        ]
+      }
+    ],
     OR: [
       { status: EmailAutomationJobStatus.PENDING },
       {

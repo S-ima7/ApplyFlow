@@ -58,9 +58,13 @@ export function verifyEmailMonitorWorkerSignature(input: {
 export async function dispatchEmailMonitorBackground(input: {
   origin: string;
   userId?: string;
+  manualJobId?: string;
   fetcher?: typeof fetch;
 }) {
-  const body = JSON.stringify(input.userId ? { userId: input.userId } : {});
+  const body = JSON.stringify({
+    ...(input.userId ? { userId: input.userId } : {}),
+    ...(input.manualJobId ? { manualJobId: input.manualJobId } : {})
+  });
   const timestamp = Math.floor(Date.now() / 1_000);
   const signature = createEmailMonitorWorkerSignature(body, timestamp);
   const url = new URL(
@@ -79,6 +83,21 @@ export async function dispatchEmailMonitorBackground(input: {
 
   if (!response.ok) {
     throw new Error(`Email monitor background dispatch failed (${response.status})`);
+  }
+}
+
+export function getInternalSiteOrigin() {
+  const candidate =
+    process.env.DEPLOY_PRIME_URL ??
+    process.env.URL ??
+    process.env.AUTH_URL ??
+    process.env.NEXTAUTH_URL;
+  if (!candidate) return null;
+
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return null;
   }
 }
 

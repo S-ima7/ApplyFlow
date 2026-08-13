@@ -7,6 +7,7 @@ export const EMAIL_MONITOR_LEASE_MS = 10 * 60 * 1_000;
 export const EMAIL_MONITOR_MAX_ATTEMPTS = 3;
 export const EMAIL_MONITOR_CONFIDENCE_THRESHOLD = 0.9;
 export const EMAIL_MONITOR_DEFAULT_DAILY_NEURON_BUDGET = 10_000;
+export const MANUAL_EMAIL_IMPORT_JOB_CODE = "MANUAL_EMAIL_IMPORT";
 
 export function getEmailMonitorDailyNeuronBudget() {
   const configured = Number(process.env.AI_DAILY_NEURON_BUDGET);

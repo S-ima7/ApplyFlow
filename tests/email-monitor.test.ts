@@ -1,5 +1,5 @@
 import { EmailAutomationJobStatus } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   getEmailMonitorConfigTransition,
   resolveEmailMonitorConsent
@@ -7,8 +7,10 @@ import {
 import { buildEmailMessageDigest } from "@/features/email-monitor/digest";
 import {
   createEmailMonitorWorkerSignature,
+  dispatchEmailMonitorBackground,
   verifyEmailMonitorWorkerSignature
 } from "@/features/email-monitor/internal-auth";
+import { parseWorkerRequest } from "@/netlify/functions/email-monitor-worker-background";
 import { decideEmailAutomation } from "@/features/email-monitor/policy";
 import {
   buildEmailMonitorGmailQuery,
@@ -324,6 +326,37 @@ describe("email monitor privacy and internal authentication", () => {
         secret
       })
     ).toBe(false);
+  });
+
+  it("dispatches a signed manual job without waiting for AI extraction", async () => {
+    vi.stubEnv("EMAIL_MONITOR_WORKER_SECRET", "a".repeat(32));
+    const fetcher = vi.fn(async (
+      _input: string | URL | Request,
+      init?: RequestInit
+    ) => {
+      expect(init?.body).toBe(
+        JSON.stringify({ userId: "user-1", manualJobId: "job-1" })
+      );
+      return new Response(null, { status: 202 });
+    });
+
+    await dispatchEmailMonitorBackground({
+      origin: "https://example.netlify.app",
+      userId: "user-1",
+      manualJobId: "job-1",
+      fetcher: fetcher as typeof fetch,
+    });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(
+      parseWorkerRequest(
+        JSON.stringify({ userId: "user-1", manualJobId: "job-1" })
+      )
+    ).toEqual({ ok: true, userId: "user-1", manualJobId: "job-1" });
+    expect(
+      parseWorkerRequest(JSON.stringify({ manualJobId: "job-1" }))
+    ).toEqual({ ok: false });
+    vi.unstubAllEnvs();
   });
 });
 
