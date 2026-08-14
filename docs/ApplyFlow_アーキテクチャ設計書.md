@@ -139,7 +139,7 @@ userId + source + externalCalendarId + externalEventId
 
 ## 8. AI抽出
 
-Cloudflare Workers AI Responses APIへstrict JSON Schemaを要求し、返却JSONをZodで再検証する。Cloudflareの[JSON Mode](https://developers.cloudflare.com/workers-ai/features/json-mode/)はSchema準拠を保証しないため、検証失敗時は登録も自動反映も行わない。既定モデルは`@cf/openai/gpt-oss-120b`、reasoning effortは`high`とする。有料AI APIへのフォールバックは実装しない。
+Cloudflare Workers AI Responses APIへstrict JSON Schemaを要求し、返却JSONをZodで再検証する。Cloudflareの[JSON Mode](https://developers.cloudflare.com/workers-ai/features/json-mode/)はSchema準拠を保証しないため、検証失敗時は登録も自動反映も行わない。既定モデルは`@cf/openai/gpt-oss-120b`とする。Gmail抽出は構造化項目の抽出で8192-token枠を推論だけで消費しないようreasoning effortを`medium`、ブラウザ拡張の個別抽出は既定の`high`とする。有料AI APIへのフォールバックは実装しない。
 
 プロンプトにはユーザータイムゾーン、処理基準日時、メール受信日時、件名、送信者、スニペット、最新本文、引用履歴を渡す。
 

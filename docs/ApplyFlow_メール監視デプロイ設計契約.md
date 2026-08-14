@@ -56,13 +56,13 @@
 | --- | --- | --- | --- |
 | Hosting | Netlify Free | Next.js、定期・background関数、無料枠上限で停止 | Vercel Hobbyはcronが日次、常駐無料VMは停止・期限制約 |
 | Database | Neon Free / AWS Ohio | Netlify既定リージョンに近く、pooled/direct URLを分離可能 | Netlify Databaseは費用予測が弱い |
-| AI | Cloudflare Workers AI Free上の`@cf/openai/gpt-oss-120b`、reasoning high | OpenAI製の最上位open-weightモデルを日次10,000 Neurons以内で追加課金なしに利用 | Groqはアカウントへログインできず運用不能。OpenAI APIはChatGPT契約と別課金 |
+| AI | Cloudflare Workers AI Free上の`@cf/openai/gpt-oss-120b`、Gmailはreasoning medium | 構造化抽出で推論tokenによる途中終了を抑え、日次10,000 Neurons以内で追加課金なしに利用 | reasoning highは8192-token枠を使い切り、Groqはアカウントへログインできず運用不能。OpenAI APIはChatGPT契約と別課金 |
 | Monitoring | 15分Gmail polling | Pub/Sub課金口座を不要にし、無料構成を維持 | Gmail PushはGCP Pub/Subとwatch更新が必要 |
 | Automatic action | 既存応募への高信頼変更のみ | 誤登録・取消の不可逆影響を抑える | 全件自動登録 |
 
 ## Failure, migration, and rollback
 
-- Failure behavior: 429、5xx、network errorはRETRY_WAITへ戻す。Gmail AI抽出は最大5分待機し、最大4試行後はFAILEDとして本文なしのエラー概要を保存する。旧版で3試行後にTIMEOUTとなったJobだけは配備後に1回自動再試行する。日次上限は翌日まで保留する。Google認証失効は監視を停止して再認証を表示する。
+- Failure behavior: 429、5xx、network errorはRETRY_WAITへ戻す。Gmail AI抽出は最大5分待機し、最大5試行後はFAILEDとして本文なしのエラー概要を保存する。旧版で3〜4試行後にTIMEOUTまたはOUTPUT_TRUNCATEDとなったJobだけは新しいreasoning設定で自動再試行する。日次上限は翌日まで保留する。Google認証失効は監視を停止して再認証を表示する。
 - Compatibility or migration: 既存DBを`pg_dump --no-owner --no-acl`でNeonへ復元し、新しいPrisma migrationを`DIRECT_URL`へ適用する。SessionとVerificationTokenは移行せず再ログインする。ブラウザ拡張の公開API契約は維持する。AI上限の単位変更は次の追加型スキーマで移行し、Groq用列は受入完了まで旧版ロールバック専用として保持する。
 
 ```json

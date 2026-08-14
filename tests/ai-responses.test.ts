@@ -124,6 +124,42 @@ describe("requestStructuredAi", () => {
     });
   });
 
+  it("allows a structured extraction to reduce reasoning effort", async () => {
+    vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "test-account");
+    vi.stubEnv("CLOUDFLARE_API_TOKEN", "test-cloudflare-token");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({ value: "ok" }),
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            total_tokens: 15
+          }
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await requestStructuredAi({
+      schemaName: "test_schema",
+      jsonSchema: {
+        type: "object",
+        properties: { value: { type: "string" } }
+      },
+      outputSchema: z.object({ value: z.string() }),
+      systemPrompt: "system",
+      userPrompt: "user",
+      reasoningEffort: "medium"
+    });
+
+    const requestBody = JSON.parse(
+      String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body)
+    );
+    expect(requestBody.reasoning).toEqual({ effort: "medium" });
+  });
+
   it("uses a caller-provided conservative recovery after schema validation fails", async () => {
     vi.stubEnv("CLOUDFLARE_ACCOUNT_ID", "test-account");
     vi.stubEnv("CLOUDFLARE_API_TOKEN", "test-cloudflare-token");

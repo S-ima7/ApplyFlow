@@ -270,12 +270,12 @@ describe("email monitor job state machine", () => {
     ).toBe(false);
   });
 
-  it("retries three times and fails on the fourth claimed attempt", () => {
-    expect(getEmailAutomationRetryTransition(3, now)).toEqual({
-      status: EmailAutomationJobStatus.RETRY_WAIT,
-      nextAttemptAt: new Date("2026-07-27T00:45:00.000Z")
-    });
+  it("retries four times and fails on the fifth claimed attempt", () => {
     expect(getEmailAutomationRetryTransition(4, now)).toEqual({
+      status: EmailAutomationJobStatus.RETRY_WAIT,
+      nextAttemptAt: new Date("2026-07-27T01:00:00.000Z")
+    });
+    expect(getEmailAutomationRetryTransition(5, now)).toEqual({
       status: EmailAutomationJobStatus.FAILED,
       nextAttemptAt: null
     });
@@ -284,16 +284,21 @@ describe("email monitor job state machine", () => {
   it("reclaims existing timeout failures once without exceeding a background run", () => {
     const where = buildClaimableEmailAutomationJobWhere("user-1", now);
 
-    expect(EMAIL_MONITOR_MAX_ATTEMPTS).toBe(4);
+    expect(EMAIL_MONITOR_MAX_ATTEMPTS).toBe(5);
     expect(EMAIL_MONITOR_JOBS_PER_RUN).toBe(2);
     expect(where).toMatchObject({
       userId: "user-1",
-      attempts: { lt: 4 },
+      attempts: { lt: 5 },
       OR: expect.arrayContaining([
         {
           status: EmailAutomationJobStatus.FAILED,
           errorCode: "TIMEOUT",
-          attempts: 3
+          attempts: { in: [3, 4] }
+        },
+        {
+          status: EmailAutomationJobStatus.FAILED,
+          errorCode: "OUTPUT_TRUNCATED",
+          attempts: { in: [3, 4] }
         }
       ])
     });

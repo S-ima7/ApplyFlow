@@ -233,6 +233,7 @@ function buildEmailAiRequest(
   return {
     schemaName: "applyflow_email_extraction",
     jsonSchema: EMAIL_EXTRACTION_JSON_SCHEMA,
+    reasoningEffort: "medium" as const,
     systemPrompt: buildSystemPrompt(),
     userPrompt: buildExtractionPrompt(email, timezone, referenceNow)
   };

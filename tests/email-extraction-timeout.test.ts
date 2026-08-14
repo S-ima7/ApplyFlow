@@ -38,7 +38,10 @@ describe("email extraction timeout", () => {
 
     expect(EMAIL_EXTRACTION_TIMEOUT_MS).toBe(5 * 60 * 1_000);
     expect(mocks.requestStructuredAi).toHaveBeenCalledWith(
-      expect.objectContaining({ timeoutMs: EMAIL_EXTRACTION_TIMEOUT_MS })
+      expect.objectContaining({
+        reasoningEffort: "medium",
+        timeoutMs: EMAIL_EXTRACTION_TIMEOUT_MS
+      })
     );
   });
 });
