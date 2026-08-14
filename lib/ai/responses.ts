@@ -14,6 +14,8 @@ export type AiUsage = {
   totalTokens: number;
 };
 
+export type AiReasoningEffort = "low" | "medium" | "high";
+
 export type AiErrorCode =
   | "INVALID_CONFIGURATION"
   | "MISSING_API_KEY"
@@ -76,6 +78,7 @@ export type StructuredAiRequest<T> = {
   outputSchema: z.ZodType<T>;
   systemPrompt: string;
   userPrompt: string;
+  reasoningEffort?: AiReasoningEffort;
   timeoutMs?: number;
   recoverOutput?: (value: unknown) => T | undefined;
 };
@@ -130,7 +133,7 @@ export async function requestStructuredAi<T>(
   const requestBody = buildCloudflareRequestBody(
     request,
     model,
-    reasoningEffort
+    request.reasoningEffort ?? reasoningEffort
   );
 
   let response: Response;
@@ -264,13 +267,17 @@ export function parseAiJson(text: string):
 export function estimateStructuredAiUsageCeiling(
   request: Pick<
     StructuredAiRequest<unknown>,
-    "schemaName" | "jsonSchema" | "systemPrompt" | "userPrompt"
+    | "schemaName"
+    | "jsonSchema"
+    | "systemPrompt"
+    | "userPrompt"
+    | "reasoningEffort"
   >
 ) {
   const requestBody = buildCloudflareRequestBody(
     request,
     DEFAULT_AI_MODEL,
-    DEFAULT_AI_REASONING_EFFORT
+    request.reasoningEffort ?? DEFAULT_AI_REASONING_EFFORT
   );
   const inputByteCeiling = new TextEncoder().encode(
     JSON.stringify(requestBody)
@@ -302,10 +309,14 @@ export function calculateCloudflareNeurons(
 function buildCloudflareRequestBody(
   request: Pick<
     StructuredAiRequest<unknown>,
-    "schemaName" | "jsonSchema" | "systemPrompt" | "userPrompt"
+    | "schemaName"
+    | "jsonSchema"
+    | "systemPrompt"
+    | "userPrompt"
+    | "reasoningEffort"
   >,
   model: string,
-  reasoningEffort: "low" | "medium" | "high"
+  reasoningEffort: AiReasoningEffort
 ) {
   return {
     model,

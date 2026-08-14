@@ -18,6 +18,7 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - Google Calendar予定のアプリ内予定への取り込み
 - Gmail readonly連携、検索、ページング、本文取得
 - Cloudflare Workers AI上の`@cf/openai/gpt-oss-120b`によるメール情報抽出
+- Gmail抽出はreasoning medium、ブラウザ拡張の個別抽出はreasoning highを使用する。
 - 抽出内容の確認・修正後の応募情報登録
 - Gmail検索条件に合う新着メールの15分間隔監視
 - 一意な既存応募への高信頼な選考情報の自動反映

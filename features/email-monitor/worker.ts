@@ -285,7 +285,12 @@ export function buildClaimableEmailAutomationJobWhere(
       {
         status: EmailAutomationJobStatus.FAILED,
         errorCode: "TIMEOUT",
-        attempts: 3
+        attempts: { in: [3, 4] }
+      },
+      {
+        status: EmailAutomationJobStatus.FAILED,
+        errorCode: "OUTPUT_TRUNCATED",
+        attempts: { in: [3, 4] }
       }
     ],
     ...(userId ? { userId } : {}),
