@@ -62,7 +62,7 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - 初回有効化時の現在時刻より後に受信したメールだけを対象にする。
 - Netlify Scheduled Functionが15分間隔でBackground Functionを起動する。
 - 検索カーソルには10分の重複区間を設け、検索結果を永続ジョブ化した後にだけ進める。
-- 1回の実行は最大25件を逐次処理する。
+- 1回の実行で最大25件をJob化し、AI処理はBackground Functionの15分上限を守るため最大2件ずつ逐次処理する。
 - Gmail message IDと内容digestで再実行時の重複登録を防ぐ。
 - 無料枠、日次AI上限、一時障害時は未処理jobを保持して次回以降へ繰り越す。
 
@@ -92,7 +92,7 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 ### 4.4 確認と登録
 
 - ユーザーが選択した手動メール取込は、総合confidenceと必要な全項目が90%以上の`CREATE_OR_UPDATE`だけ自動反映する。
-- 手動取込のAI抽出は永続Jobを受け付けてNetlify Background Functionで実行し、画面はJob状態をポーリングする。同期Server Action内でAI完了を待たない。
+- 手動取込のAI抽出は永続Jobを受け付けてNetlify Background Functionで実行し、画面はJob状態をポーリングする。同期Server Action内でAI完了を待たず、Gmail抽出だけは最大5分の推論時間を許容する。
 - 一意な既存応募は手入力との競合がなければ更新し、該当応募がなければ会社名・ポジションが揃った場合だけ新規作成する。
 - 低confidence、曖昧な応募、取消、不完全な日時、手入力との競合は確認画面へ送る。
 - confidenceが75%未満の項目を「要確認」として強調する。

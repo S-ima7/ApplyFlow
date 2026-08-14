@@ -47,7 +47,7 @@
 | Decision policy | email automation | extraction、既存応募候補 | AUTO_APPLIEDまたはREVIEW_REQUIRED | 新規応募・取消を自動反映しない |
 | Registration service | message registration domain | target、event、schedule | transaction result、activity log | 手入力データを黙って上書きしない |
 | Scheduler | Netlify Scheduled Function | 15分cron | 署名付きbackground起動 | 外部公開の管理APIを作らない |
-| Worker | Netlify Background Function | internal secret | 最大25件の逐次処理 | 無料枠を越えて有料処理しない |
+| Worker | Netlify Background Function | internal secret | 最大25件のJob化、最大2件のAI逐次処理 | 無料枠を越えて有料処理しない |
 | Settings UI | authenticated user | enabled、query、consent | monitor config、状態表示 | 同意なしに監視を有効化しない |
 
 ## Decisions
@@ -62,7 +62,7 @@
 
 ## Failure, migration, and rollback
 
-- Failure behavior: 429、5xx、network errorはRETRY_WAITへ戻す。日次上限は翌日まで保留する。Google認証失効は監視を停止して再認証を表示する。再試行上限後はFAILEDとして本文なしのエラー概要を保存する。
+- Failure behavior: 429、5xx、network errorはRETRY_WAITへ戻す。Gmail AI抽出は最大5分待機し、最大4試行後はFAILEDとして本文なしのエラー概要を保存する。旧版で3試行後にTIMEOUTとなったJobだけは配備後に1回自動再試行する。日次上限は翌日まで保留する。Google認証失効は監視を停止して再認証を表示する。
 - Compatibility or migration: 既存DBを`pg_dump --no-owner --no-acl`でNeonへ復元し、新しいPrisma migrationを`DIRECT_URL`へ適用する。SessionとVerificationTokenは移行せず再ログインする。ブラウザ拡張の公開API契約は維持する。AI上限の単位変更は次の追加型スキーマで移行し、Groq用列は受入完了まで旧版ロールバック専用として保持する。
 
 ```json

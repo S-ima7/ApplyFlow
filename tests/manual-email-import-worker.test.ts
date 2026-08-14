@@ -28,6 +28,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("@/lib/gmail", () => ({ getGmailMessage: mocks.getGmailMessage }));
 vi.mock("@/features/email-import/extraction", () => ({
+  EMAIL_EXTRACTION_TIMEOUT_MS: 5 * 60 * 1_000,
   extractEmailWithAi: mocks.extractEmailWithAi
 }));
 vi.mock("@/features/email-monitor/automation", () => ({
@@ -171,7 +172,7 @@ describe("manual email import background worker", () => {
       where: {
         id: "job-1",
         status: "PROCESSING",
-        leaseUntil: new Date("2026-08-12T00:02:00.000Z")
+        leaseUntil: new Date("2026-08-12T00:07:00.000Z")
       },
       data: expect.objectContaining({
         status: "FAILED",

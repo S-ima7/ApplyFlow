@@ -19,6 +19,7 @@ import {
 import type { GmailFullMessage } from "@/lib/gmail";
 
 export const EMAIL_EXTRACTION_PROMPT_VERSION = "2026-08-12.v4";
+export const EMAIL_EXTRACTION_TIMEOUT_MS = 5 * 60 * 1_000;
 
 export type EmailExtractionResult =
   | {
@@ -190,6 +191,7 @@ export async function extractEmailWithAi(
   const request = buildEmailAiRequest(email, timezone, referenceNow);
   const result = await requestStructuredAi({
     ...request,
+    timeoutMs: EMAIL_EXTRACTION_TIMEOUT_MS,
     outputSchema: emailAiExtractionSchema,
     recoverOutput: (value) =>
       recoverEmailAiExtraction(value, { timezone })

@@ -1,14 +1,17 @@
 import { EmailAutomationJobStatus, Prisma } from "@prisma/client";
 import { tryAutoCreateEmailImportApplication } from "@/features/email-import/automation";
 import { decideAndApplyEmailImportAutomation } from "@/features/email-monitor/automation";
-import { extractEmailWithAi } from "@/features/email-import/extraction";
+import {
+  EMAIL_EXTRACTION_TIMEOUT_MS,
+  extractEmailWithAi
+} from "@/features/email-import/extraction";
 import { emailAiExtractionSchema } from "@/features/email-import/schema";
 import { MANUAL_EMAIL_IMPORT_JOB_CODE } from "@/features/email-monitor/constants";
 import { buildEmailMessageDigest } from "@/features/email-monitor/digest";
 import { getGmailMessage } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
 
-const MANUAL_JOB_LEASE_MS = 2 * 60 * 1_000;
+const MANUAL_JOB_LEASE_MS = EMAIL_EXTRACTION_TIMEOUT_MS + 2 * 60 * 1_000;
 
 export async function runManualEmailImportJob(input: {
   jobId: string;

@@ -171,11 +171,11 @@ Scheduled Function (*/15 * * * *)
           -> RETRY_WAIT / FAILED
 ```
 
-初回有効化時に`monitoringSince`とcursorを現在時刻へ設定する。通常の検索には10分のoverlapを入れるが、取得後にGmail `internalDate >= monitoringSince`をミリ秒精度で再検証する。jobを永続化してからcursorを進める。Background Functionは一回最大25件を逐次処理し、日次180,000 token到達時は未処理jobを翌日へ残す。
+初回有効化時に`monitoringSince`とcursorを現在時刻へ設定する。通常の検索には10分のoverlapを入れるが、取得後にGmail `internalDate >= monitoringSince`をミリ秒精度で再検証する。jobを永続化してからcursorを進める。1回のscanで最大25件をJob化し、Background FunctionはNetlifyの15分実行上限を守るためAI処理を最大2件ずつ行う。日次10,000 Neurons到達時は未処理jobを翌日へ残す。
 
 `EmailAutomationJob`はleaseとattemptを持ち、Gmail message IDと内容digestで冪等性を保証する。raw bodyはjob、error、logへ含めない。
 
-手動Gmail取込も同じ`EmailImport / EmailAutomationJob`を利用する。同期Server ActionはGmail本文を一時取得してdigestを作り、署名付きBackground FunctionへJob IDを渡した時点で応答する。Background Functionが本文を再取得してdigestを照合し、AI抽出、自動反映または確認待ちへの振り分けまで実行する。画面は軽量なServer ActionでJob状態だけをポーリングする。これによりNetlifyの同期実行上限からAI推論時間を分離し、本文をDBへ保存せず再実行の冪等性も維持する。
+手動Gmail取込も同じ`EmailImport / EmailAutomationJob`を利用する。同期Server ActionはGmail本文を一時取得してdigestを作り、署名付きBackground FunctionへJob IDを渡した時点で応答する。Background Functionが本文を再取得してdigestを照合し、AI抽出、自動反映または確認待ちへの振り分けまで実行する。Gmail抽出には最大5分を許容し、手動Jobのleaseはこの上限より長くする。画面は軽量なServer ActionでJob状態だけをポーリングする。これによりNetlifyの同期実行上限からAI推論時間を分離し、本文をDBへ保存せず再実行の冪等性も維持する。
 
 AI呼出し前に、JSON Schema・promptを含む実リクエストのUTF-8 byte数、サーバーフレーミング余裕、最大出力4,096 tokenから保守的な最大使用量を算出し、`AiDailyUsage`へSerializable transactionで予約する。成功時は実usageで精算し、応答不明の失敗は予約全量を使用済みとみなす。これにより入力サイズにかかわらず、Scheduled実行と「今すぐ実行」が重なっても日次上限を共有する。
 
