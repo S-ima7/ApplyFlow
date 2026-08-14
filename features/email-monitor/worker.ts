@@ -5,6 +5,7 @@ import {
 import { decideAndApplyEmailAutomation } from "@/features/email-monitor/automation";
 import {
   EMAIL_MONITOR_BATCH_SIZE,
+  EMAIL_MONITOR_JOBS_PER_RUN,
   EMAIL_MONITOR_LEASE_MS,
   EMAIL_MONITOR_MAX_ATTEMPTS,
   MANUAL_EMAIL_IMPORT_JOB_CODE
@@ -71,7 +72,7 @@ export async function runEmailMonitorBatch(
   }
 
   let processed = 0;
-  while (processed < EMAIL_MONITOR_BATCH_SIZE) {
+  while (processed < EMAIL_MONITOR_JOBS_PER_RUN) {
     const iterationNow = currentTime();
     const job = await claimNextEmailAutomationJob(
       options.userId,
@@ -225,7 +226,43 @@ async function claimNextEmailAutomationJob(userId: string | undefined, now: Date
     }
   });
 
-  const claimable = {
+  const claimable = buildClaimableEmailAutomationJobWhere(userId, now);
+
+  for (let contention = 0; contention < 5; contention += 1) {
+    const candidate = await prisma.emailAutomationJob.findFirst({
+      where: claimable,
+      orderBy: [{ nextAttemptAt: "asc" }, { createdAt: "asc" }],
+      select: { id: true }
+    });
+    if (!candidate) return null;
+
+    const claimed = await prisma.emailAutomationJob.updateMany({
+      where: { id: candidate.id, ...claimable },
+      data: {
+        status: EmailAutomationJobStatus.PROCESSING,
+        attempts: { increment: 1 },
+        leaseUntil: new Date(now.getTime() + EMAIL_MONITOR_LEASE_MS),
+        nextAttemptAt: null,
+        errorCode: null,
+        errorMessage: null,
+        processedAt: null
+      }
+    });
+    if (claimed.count === 1) {
+      return prisma.emailAutomationJob.findUnique({
+        where: { id: candidate.id },
+        select: { id: true }
+      });
+    }
+  }
+  return null;
+}
+
+export function buildClaimableEmailAutomationJobWhere(
+  userId: string | undefined,
+  now: Date
+) {
+  return {
     attempts: { lt: EMAIL_MONITOR_MAX_ATTEMPTS },
     AND: [
       {
@@ -244,6 +281,11 @@ async function claimNextEmailAutomationJob(userId: string | undefined, now: Date
       {
         status: EmailAutomationJobStatus.PROCESSING,
         leaseUntil: { lt: now }
+      },
+      {
+        status: EmailAutomationJobStatus.FAILED,
+        errorCode: "TIMEOUT",
+        attempts: 3
       }
     ],
     ...(userId ? { userId } : {}),
@@ -256,34 +298,6 @@ async function claimNextEmailAutomationJob(userId: string | undefined, now: Date
       }
     }
   } satisfies Prisma.EmailAutomationJobWhereInput;
-
-  for (let contention = 0; contention < 5; contention += 1) {
-    const candidate = await prisma.emailAutomationJob.findFirst({
-      where: claimable,
-      orderBy: [{ nextAttemptAt: "asc" }, { createdAt: "asc" }],
-      select: { id: true }
-    });
-    if (!candidate) return null;
-
-    const claimed = await prisma.emailAutomationJob.updateMany({
-      where: { id: candidate.id, ...claimable },
-      data: {
-        status: EmailAutomationJobStatus.PROCESSING,
-        attempts: { increment: 1 },
-        leaseUntil: new Date(now.getTime() + EMAIL_MONITOR_LEASE_MS),
-        nextAttemptAt: null,
-        errorCode: null,
-        errorMessage: null
-      }
-    });
-    if (claimed.count === 1) {
-      return prisma.emailAutomationJob.findUnique({
-        where: { id: candidate.id },
-        select: { id: true }
-      });
-    }
-  }
-  return null;
 }
 
 async function processClaimedJob(

@@ -25,6 +25,11 @@ import {
   nextUtcDay
 } from "@/features/email-monitor/state-machine";
 import {
+  EMAIL_MONITOR_JOBS_PER_RUN,
+  EMAIL_MONITOR_MAX_ATTEMPTS
+} from "@/features/email-monitor/constants";
+import { buildClaimableEmailAutomationJobWhere } from "@/features/email-monitor/worker";
+import {
   AI_NEURON_RESERVATION_PER_REQUEST,
   canReserveAiNeurons,
   toUtcUsageDate
@@ -265,14 +270,32 @@ describe("email monitor job state machine", () => {
     ).toBe(false);
   });
 
-  it("retries twice and fails on the third claimed attempt", () => {
-    expect(getEmailAutomationRetryTransition(2, now)).toEqual({
-      status: EmailAutomationJobStatus.RETRY_WAIT,
-      nextAttemptAt: new Date("2026-07-27T00:30:00.000Z")
-    });
+  it("retries three times and fails on the fourth claimed attempt", () => {
     expect(getEmailAutomationRetryTransition(3, now)).toEqual({
+      status: EmailAutomationJobStatus.RETRY_WAIT,
+      nextAttemptAt: new Date("2026-07-27T00:45:00.000Z")
+    });
+    expect(getEmailAutomationRetryTransition(4, now)).toEqual({
       status: EmailAutomationJobStatus.FAILED,
       nextAttemptAt: null
+    });
+  });
+
+  it("reclaims existing timeout failures once without exceeding a background run", () => {
+    const where = buildClaimableEmailAutomationJobWhere("user-1", now);
+
+    expect(EMAIL_MONITOR_MAX_ATTEMPTS).toBe(4);
+    expect(EMAIL_MONITOR_JOBS_PER_RUN).toBe(2);
+    expect(where).toMatchObject({
+      userId: "user-1",
+      attempts: { lt: 4 },
+      OR: expect.arrayContaining([
+        {
+          status: EmailAutomationJobStatus.FAILED,
+          errorCode: "TIMEOUT",
+          attempts: 3
+        }
+      ])
     });
   });
 
