@@ -46,7 +46,7 @@ export default async function ApplicationDetailPage({
         </div>
         <Link
           href={`/applications/${application.id}/edit`}
-          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+          className="inline-flex min-h-11 items-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
         >
           編集
         </Link>
@@ -274,7 +274,7 @@ export default async function ApplicationDetailPage({
               <CardTitle>メモ</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="whitespace-pre-wrap text-sm text-slate-700">
+              <p className="whitespace-pre-wrap break-words text-sm text-slate-700">
                 {application.note || "メモはありません。"}
               </p>
             </CardContent>

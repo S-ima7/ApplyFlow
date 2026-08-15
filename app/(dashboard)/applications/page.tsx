@@ -23,7 +23,7 @@ export default async function ApplicationsPage() {
         </div>
         <Link
           href="/applications/new"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          className="inline-flex min-h-11 items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           応募先を追加
         </Link>

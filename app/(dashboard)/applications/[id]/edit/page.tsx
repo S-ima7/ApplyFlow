@@ -21,8 +21,8 @@ export default async function EditApplicationPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-slate-950">応募先編集</h2>
           <p className="text-sm text-slate-500">
             {application.company.name} / {application.position}

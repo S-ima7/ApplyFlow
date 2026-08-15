@@ -93,7 +93,7 @@ export default async function EmailImportConfirmPage({
             </div>
             <Link
               href={`/applications/${extraction.createdApplication.id}`}
-              className="rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
+              className="inline-flex min-h-11 items-center justify-center rounded-md bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
             >
               応募詳細へ
             </Link>
@@ -121,7 +121,7 @@ export default async function EmailImportConfirmPage({
                   ? `/applications/${matchedApplication.id}`
                   : "/applications"
               }
-              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-center text-sm font-semibold text-amber-950 hover:bg-amber-100"
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-amber-300 bg-white px-4 py-2 text-center text-sm font-semibold text-amber-950 hover:bg-amber-100"
             >
               {matchedApplication ? "応募詳細で確認" : "応募先一覧で確認"}
             </Link>
@@ -145,7 +145,7 @@ export default async function EmailImportConfirmPage({
             </div>
             <Link
               href={manualMatch ? `/applications/${manualMatch.id}` : "/applications"}
-              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-center text-sm font-semibold text-amber-950 hover:bg-amber-100"
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-amber-300 bg-white px-4 py-2 text-center text-sm font-semibold text-amber-950 hover:bg-amber-100"
             >
               {manualMatch ? "応募詳細で確認" : "応募先一覧で確認"}
             </Link>
