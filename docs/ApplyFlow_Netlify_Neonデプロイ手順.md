@@ -78,7 +78,7 @@ Google Cloud Consoleで次のcallbackをproduction OAuth clientへ追加する�
 https://<site>.netlify.app/api/auth/callback/google
 ```
 
-Calendar APIとGmail APIを有効化し、要求scopeがCalendar readonlyとGmail readonlyのままであることを確認する。
+Calendar APIとGmail APIを有効化し、要求scopeがCalendar readonly、Calendar events owned、Gmail readonlyであることを確認する。既存利用者は設定画面から再ログインし、追加されたCalendar events ownedを許可する。
 
 Chrome拡張機能をproduction URLで再buildし、利用者側で新しい`browser-extension/dist`を読み込む。DBを全移行するため既存の未失効BrowserExtensionTokenは継続利用できる。
 

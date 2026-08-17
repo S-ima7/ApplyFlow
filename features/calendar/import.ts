@@ -4,6 +4,17 @@ export function getGoogleCalendarImportKey(calendarId: string, externalEventId: 
   return `${calendarId}:${externalEventId}`;
 }
 
+export function isApplyFlowInterviewCalendarEvent(
+  event: GoogleCalendarEvent,
+  exportedInterviewKeys: ReadonlySet<string>
+) {
+  const key = event.applyFlowInterviewKey;
+
+  return Boolean(
+    key && event.externalEventId === key && exportedInterviewKeys.has(key)
+  );
+}
+
 export function buildScheduleEventImportData(
   userId: string,
   event: GoogleCalendarEvent,
@@ -17,17 +28,17 @@ export function buildScheduleEventImportData(
     externalCalendarId: event.calendarId,
     externalEventId: event.externalEventId,
     title: event.title,
-    description: event.description,
-    location: event.location,
-    meetingUrl: event.meetingUrl,
+    description: event.description ?? null,
+    location: event.location ?? null,
+    meetingUrl: event.meetingUrl ?? null,
     startAt: event.startAt,
     endAt: event.endAt,
-    startDate: event.startDate,
-    endDate: event.endDate,
+    startDate: event.startDate ?? null,
+    endDate: event.endDate ?? null,
     allDay: event.allDay,
     timezone: event.timezone ?? fallbackTimezone,
-    externalUrl: event.htmlLink,
-    sourceUpdatedAt: event.updatedAt,
+    externalUrl: event.htmlLink ?? null,
+    sourceUpdatedAt: event.updatedAt ?? null,
     importedAt: new Date(),
     deletedAt: null
   };

@@ -8,6 +8,7 @@ import { StageForm } from "@/features/applications/components/stage-form";
 import { InterviewForm } from "@/features/interviews/components/interview-form";
 import { ProposedSlotForm } from "@/features/interviews/components/proposed-slot-form";
 import { ConfirmSlotButton } from "@/features/interviews/components/confirm-slot-button";
+import { GoogleCalendarRegisterButton } from "@/features/interviews/components/google-calendar-register-button";
 import { getApplicationDetail } from "@/features/applications/queries";
 import { requireUser } from "@/lib/auth-guard";
 import { formatDateTime, formatTimeRange, daysUntil } from "@/lib/date";
@@ -188,6 +189,14 @@ export default async function ApplicationDetailPage({
                         <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">
                           確定 {formatTimeRange(interview.confirmedStartAt, interview.confirmedEndAt)}
                         </p>
+                      ) : null}
+                      {interview.status === "CONFIRMED" &&
+                      interview.confirmedStartAt &&
+                      interview.confirmedEndAt &&
+                      interview.confirmedStartAt < interview.confirmedEndAt ? (
+                        <div className="mt-3">
+                          <GoogleCalendarRegisterButton interviewId={interview.id} />
+                        </div>
                       ) : null}
                       <div className="mt-4 space-y-2">
                         <p className="text-sm font-semibold">候補日時</p>
