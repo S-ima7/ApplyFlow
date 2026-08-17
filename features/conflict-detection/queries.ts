@@ -3,7 +3,10 @@ import {
   ProposedSlotStatus,
   ScheduleEventSource
 } from "@prisma/client";
-import { getGoogleCalendarImportKey } from "@/features/calendar/import";
+import {
+  getGoogleCalendarImportKey,
+  isApplyFlowInterviewCalendarEvent
+} from "@/features/calendar/import";
 import { prisma } from "@/lib/prisma";
 import { detectConflicts } from "@/features/conflict-detection";
 import { googleCalendarEventsToScheduleItems } from "@/features/conflict-detection/google-calendar";
@@ -179,9 +182,7 @@ export async function getScheduleItemsForConflict(
         !importedGoogleKeys.has(
           getGoogleCalendarImportKey(event.calendarId, event.externalEventId)
         ) &&
-        (!event.applyFlowInterviewKey ||
-          event.externalEventId !== event.applyFlowInterviewKey ||
-          !exportedInterviewKeys.has(event.applyFlowInterviewKey))
+        !isApplyFlowInterviewCalendarEvent(event, exportedInterviewKeys)
     )
   );
 

@@ -38,10 +38,10 @@ export function GoogleCalendarRegisterButton({
           });
         }}
       >
-        {isPending
-          ? "登録中…"
-          : registered
-            ? "Google Calendar登録済み"
+        {registered
+          ? "Google Calendar登録済み"
+          : isPending
+            ? "登録中…"
             : "Google Calendarに登録"}
       </Button>
 

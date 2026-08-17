@@ -6,6 +6,7 @@ import {
   buildGoogleCalendarEventUrl,
   buildGoogleCalendarEventsUrl,
   getGoogleCalendarApiErrorMessage,
+  getDefaultGoogleCalendarRange,
   getGoogleCalendarInterviewEventId,
   hasGoogleCalendarEventsOwnedScope,
   hasGoogleCalendarReadonlyScope,
@@ -63,6 +64,20 @@ describe("hasGoogleCalendarReadonlyScope", () => {
 
   it("returns false when the Calendar scope is missing", () => {
     expect(hasGoogleCalendarReadonlyScope("openid email profile")).toBe(false);
+  });
+});
+
+describe("getDefaultGoogleCalendarRange", () => {
+  it("uses the user's calendar month at the server timezone boundary", () => {
+    const range = getDefaultGoogleCalendarRange(
+      new Date("2026-08-31T15:30:00.000Z"),
+      "Asia/Tokyo"
+    );
+
+    expect(range).toEqual({
+      timeMin: new Date("2026-08-31T15:00:00.000Z"),
+      timeMax: new Date("2026-10-31T15:00:00.000Z")
+    });
   });
 });
 
@@ -268,5 +283,12 @@ describe("Google Calendar import data", () => {
       externalEventId: "event-1",
       title: "面接"
     });
+    expect(data.description).toBeNull();
+    expect(data.location).toBeNull();
+    expect(data.meetingUrl).toBeNull();
+    expect(data.startDate).toBeNull();
+    expect(data.endDate).toBeNull();
+    expect(data.externalUrl).toBe("https://calendar.google.com/event");
+    expect(data.sourceUpdatedAt).toBeNull();
   });
 });

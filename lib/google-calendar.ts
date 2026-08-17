@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { DEFAULT_TIMEZONE } from "@/lib/date";
+import { DEFAULT_TIMEZONE, parseDateTimeInTimezone } from "@/lib/date";
 import {
   GOOGLE_BASE_AUTH_SCOPES,
   GOOGLE_GMAIL_READONLY_SCOPE,
@@ -148,11 +148,39 @@ export function hasGoogleCalendarEventsOwnedScope(scope?: string | null) {
   return hasGoogleScope(scope, GOOGLE_CALENDAR_EVENTS_OWNED_SCOPE);
 }
 
-export function getDefaultGoogleCalendarRange(now = new Date()): GoogleCalendarRange {
-  const timeMin = new Date(now.getFullYear(), now.getMonth(), 1);
-  const timeMax = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+export function getDefaultGoogleCalendarRange(
+  now = new Date(),
+  timezone = DEFAULT_TIMEZONE
+): GoogleCalendarRange {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit"
+  }).formatToParts(now);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const timeMin = getMonthBoundaryInTimezone(year, month - 1, timezone);
+  const timeMax = getMonthBoundaryInTimezone(year, month + 1, timezone);
 
   return { timeMin, timeMax };
+}
+
+function getMonthBoundaryInTimezone(
+  year: number,
+  monthIndex: number,
+  timezone: string
+) {
+  const normalized = new Date(Date.UTC(year, monthIndex, 1));
+  const localValue = `${normalized.getUTCFullYear()}-${String(
+    normalized.getUTCMonth() + 1
+  ).padStart(2, "0")}-01T00:00:00`;
+  const boundary = parseDateTimeInTimezone(localValue, timezone);
+
+  if (!boundary) {
+    throw new Error("Google Calendarの取得期間を計算できませんでした");
+  }
+
+  return boundary;
 }
 
 export async function getGoogleCalendarConnectionStatus(
