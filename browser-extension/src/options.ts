@@ -18,7 +18,10 @@
   async function loadSettings() {
     const stored = await chrome.storage.local.get(settingsKey);
     const value = isRecord(stored[settingsKey]) ? stored[settingsKey] : {};
-    setValue("#api-base-url", typeof value.apiBaseUrl === "string" ? value.apiBaseUrl : "http://localhost:3000");
+    const apiBaseUrl = typeof value.apiBaseUrl === "string" && getApiOriginPattern(value.apiBaseUrl)
+      ? new URL(value.apiBaseUrl).origin
+      : "";
+    setValue("#api-base-url", apiBaseUrl);
     setValue("#api-token", typeof value.apiToken === "string" ? value.apiToken : "");
     setValue(
       "#default-application-type",
@@ -36,7 +39,7 @@
     const apiPattern = getApiOriginPattern(apiBaseUrl);
 
     if (!apiPattern) {
-      showStatus("ApplyFlow URLはlocalhostのHTTP、またはHTTPSを指定してください。", "error");
+      showStatus("ApplyFlow URLにはHTTPS URLを指定してください。", "error");
       return;
     }
     if (apiToken && !apiToken.startsWith("af_ext_")) {
@@ -84,7 +87,7 @@
     await chrome.permissions.remove({ origins });
     await chrome.storage.local.set({
       [settingsKey]: {
-        apiBaseUrl: "http://localhost:3000",
+        apiBaseUrl: "",
         apiToken: "",
         defaultApplicationType: "CAREER_CHANGE",
         adapters: { GREEN: false, DODA: false }
@@ -92,14 +95,13 @@
     });
     await chrome.runtime.sendMessage({ type: "SYNC_REGISTRATIONS" });
     await loadSettings();
-    showStatus("ローカル設定と媒体権限を削除しました。ApplyFlow側のトークンも失効してください。", "success");
+    showStatus("拡張機能設定と媒体権限を削除しました。ApplyFlow側のトークンも失効してください。", "success");
   }
 
   function getApiOriginPattern(value: string) {
     try {
       const url = new URL(value);
-      const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-      if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) return null;
+      if (url.protocol !== "https:") return null;
       return `${url.protocol}//${url.hostname}/*`;
     } catch {
       return null;

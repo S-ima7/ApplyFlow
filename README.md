@@ -31,16 +31,12 @@ ApplyFlowは、就職・転職活動の応募先、選考フェーズ、面談�
 - Netlify Functions / Neon PostgreSQL
 - Vitest / ESLint
 
-## ローカル起動
+## 対応環境
 
-```bash
-npm install
-docker compose up -d
-npm run prisma:migrate
-npm run dev
-```
+- PC: 本番HTTPS URLへ最新のGoogle ChromeからアクセスするWebアプリ
+- iPhone: iPhone 14以降のサポート中の最新iOS Safari、またはホーム画面へ追加したPWA
 
-`.env.example`を参考に`.env`または`.env.local`を設定してください。
+アプリの配布・運用はNetlifyとNeonを前提とします。環境変数は`.env.example`の本番用プレースホルダーを参照し、NetlifyのProduction contextへ設定してください。
 
 ## 必須環境変数
 
@@ -69,7 +65,7 @@ Google CalendarとGmailへの書き込みは行いません。
 
 Cloudflare Dashboardで **Workers AI → Use REST API → Create a Workers AI API Token** を選び、`CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_API_TOKEN` を設定してください。手動作成するtokenには `Workers AI - Read` と `Workers AI - Edit` の両方を付与します。詳しくは[Cloudflare Workers AI REST APIの公式手順](https://developers.cloudflare.com/workers-ai/get-started/rest-api/)を参照してください。ApplyFlowは有料AI APIへフォールバックしません。
 
-## Netlify / Neonデプロイ
+## Netlify / Neonセットアップ
 
 無料構成ではNetlify Scheduled Functionが15分ごとにGmail監視用Background Functionを起動します。Neonでは`DATABASE_URL`にpooled URL、`DIRECT_URL`にdirect URLを設定します。CloudflareはWorkers Freeのまま運用し、Workers Paidへアップグレードしません。Workers AI Freeの1日10,000 Neuronsに達した場合やCloudflareから429が返った場合は、課金せず残件を翌日以降へ繰り越します。使用量は[Cloudflare Workers AIの料金・使用量ページ](https://developers.cloudflare.com/workers-ai/platform/pricing/)で確認してください。
 
@@ -80,7 +76,7 @@ npm run prisma:migrate:deploy
 npm run build
 ```
 
-既存DBの移行、OAuth redirect URI、無料枠の確認、ロールバックは[デプロイ・移行手順](docs/ApplyFlow_Netlify_Neonデプロイ手順.md)を参照してください。
+環境変数、DB migration、OAuth redirect URI、無料枠の確認、ロールバックは[デプロイ・移行手順](docs/ApplyFlow_Netlify_Neonデプロイ手順.md)を参照してください。公開後はPC版ChromeとiPhone Safariの両方から同じ本番HTTPS URLを利用します。
 
 ## iPhone Safari / PWA
 
@@ -124,6 +120,7 @@ npm run build
 - [アーキテクチャ設計書](docs/ApplyFlow_アーキテクチャ設計書.md)
 - [DB設計書](docs/ApplyFlow_DB設計書.md)
 - [UI/UX設計書](docs/ApplyFlow_UIUX設計書.md)
+- [Web / PWA実行環境設計契約](docs/ApplyFlow_Web_PWA実行環境設計契約.md)
 - [iPhone Safari / PWA設計契約](docs/ApplyFlow_iPhone_PWA設計契約.md)
 - [ブラウザ拡張機能設計書](docs/ApplyFlow_ブラウザ拡張機能設計書.md)
 - [メール監視・無料AIデプロイ設計契約](docs/ApplyFlow_メール監視デプロイ設計契約.md)
