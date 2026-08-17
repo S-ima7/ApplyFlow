@@ -144,6 +144,7 @@ export function CalendarClient({ events, applicationOptions }: CalendarClientPro
             role="dialog"
             aria-modal="true"
             aria-labelledby="calendar-event-title"
+            data-pull-to-refresh-ignore
             className="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:max-w-lg sm:rounded-xl sm:pb-5"
           >
             <div className="flex items-start justify-between gap-4">

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegistration } from "@/components/pwa-registration";
+import { PwaPullToRefresh } from "@/components/pwa-pull-to-refresh";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -40,6 +41,7 @@ export default function RootLayout({
     <html lang="ja">
       <body>
         {children}
+        <PwaPullToRefresh />
         <PwaRegistration />
       </body>
     </html>

@@ -33,6 +33,19 @@ describe("iPhone PWA contract", () => {
     expect(serviceWorker).not.toMatch(/\bcaches\./);
   });
 
+  it("mounts pull to refresh only for the iOS standalone experience", () => {
+    const rootLayout = readFileSync(join(process.cwd(), "app", "layout.tsx"), "utf8");
+    const pullToRefresh = readFileSync(
+      join(process.cwd(), "components", "pwa-pull-to-refresh.tsx"),
+      "utf8"
+    );
+
+    expect(rootLayout).toContain("<PwaPullToRefresh />");
+    expect(pullToRefresh).toContain(".standalone");
+    expect(pullToRefresh).toContain("window.scrollY > 0");
+    expect(pullToRefresh).toContain("window.location.reload()");
+  });
+
   it("keeps Safari form and tap sizes at iPhone landscape widths", () => {
     const input = readFileSync(join(process.cwd(), "components", "ui", "input.tsx"), "utf8");
     const select = readFileSync(join(process.cwd(), "components", "ui", "select.tsx"), "utf8");
