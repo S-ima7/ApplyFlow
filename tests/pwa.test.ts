@@ -20,6 +20,7 @@ describe("iPhone PWA contract", () => {
       ])
     });
     expect(rootLayout).toContain('capable: true');
+    expect(rootLayout).toContain('"apple-mobile-web-app-capable": "yes"');
     expect(rootLayout).toContain('viewportFit: "cover"');
     expect(rootLayout).not.toContain("maximumScale");
     expect(rootLayout).not.toContain("userScalable");

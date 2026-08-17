@@ -12,6 +12,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "ApplyFlow"
   },
+  other: {
+    "apple-mobile-web-app-capable": "yes"
+  },
   formatDetection: {
     telephone: false
   },
