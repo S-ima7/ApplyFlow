@@ -1,6 +1,7 @@
-# ApplyFlow ブラウザ拡張機能設計書 v2.5
+# ApplyFlow ブラウザ拡張機能設計書 v2.6
 
-更新日: 2026-07-15  
+更新日: 2026-08-17
+
 対象実装: ApplyFlow v0.1.0 / Chrome拡張 v0.2.0 / Manifest V3  
 ステータス: MVP実装済み
 
@@ -16,7 +17,7 @@ ApplyFlow本体の目的である「応募先、選考フェーズ、面談候�
 
 - 利用者は本人1名である。
 - Chrome Web Storeでは配布せず、ソースからビルドして開発者モードで読み込む。
-- ApplyFlowはローカル環境、または本人管理下のHTTPS環境で稼働する。
+- ApplyFlowはNetlifyで公開した本人管理下のHTTPS環境で稼働する。
 - Green、dodaおよび各運営会社とは無関係の非公式ツールである。
 - ソースコードは公開可能だが、トークン、実求人データ、Cookie、DBダンプは公開しない。
 
@@ -28,7 +29,7 @@ ApplyFlow本体の目的である「応募先、選考フェーズ、面談候�
 - JSON-LD、可視DOM、公開メタデータ、URLからの候補抽出
 - Shadow DOM内の確認・編集ドロワー
 - 保存済み照合、新規保存、ApplyFlow詳細画面への遷移
-- トークン発行・失効、ローカル設定削除
+- トークン発行・失効、拡張機能設定削除
 - URL正規化、重複防止、Idempotency-Key
 - 合成DOMを使ったアダプターテスト
 - 両媒体の非求人ページに表示する「面接日時を抽出」ボタン
@@ -86,7 +87,7 @@ API障害時は入力を自動保存しない。ユーザーが画面を開い�
 | 論点 | 採用 | 理由 |
 |---|---|---|
 | 認証 | 専用Bearer Token | 既存Auth.jsのDBセッションCookieを拡張機能へ流用せず、個別に失効できる |
-| Token受け渡し | Web設定画面で発行し、拡張設定へ1回貼付 | OAuth認可サーバーを新設せず、本人1名のローカル利用に必要十分 |
+| Token受け渡し | Web設定画面で発行し、拡張設定へ1回貼付 | OAuth認可サーバーを新設せず、本人1名の利用に必要十分 |
 | Token保存 | サーバーはSHA-256 digest、Chromeは`storage.local` | DB漏えい時に平文Tokenを残さず、再表示しない |
 | Content ScriptからのToken参照 | 禁止 | `storage.local.setAccessLevel(TRUSTED_CONTEXTS)`でService Workerと拡張ページに限定 |
 | UI | TypeScript + DOM + Shadow DOM | React/Viteを追加せず、既存TypeScriptだけで小さいMV3成果物を作る |
@@ -130,7 +131,7 @@ flowchart LR
 | `extraction.ts` | 媒体判定、JSON-LD/可視DOM抽出、URL正規化 |
 | `content.ts` | ボタン、確認ドロワー、編集、キーボード操作、メッセージ送信 |
 | `background.ts` | Token隔離、権限に応じたContent Script登録、送信元検証、API通信 |
-| `options.ts` | ApplyFlow URL、Token、応募種別、媒体権限、ローカル削除 |
+| `options.ts` | ApplyFlow HTTPS URL、Token、応募種別、媒体権限、拡張機能設定削除 |
 | `popup.ts` | 設定画面への入口 |
 | Extension API | Token認証、入力検証、重複判定、トランザクション保存 |
 | ApplyFlow設定画面 | Token発行、最終利用確認、失効 |
@@ -181,13 +182,13 @@ features/browser-extension/
 
 ### 7.2 任意ホスト権限
 
-`manifest.json`は動的な自己ホスト先に対応するため、`https://*/*`、`http://localhost/*`、`http://127.0.0.1/*`を任意権限として宣言する。実際の要求は設定保存時に次の具体的originへ限定する。
+`manifest.json`は動的な本番ホスト先に対応するため、`https://*/*`だけを任意権限として宣言する。実際の要求は設定保存時に次の具体的originへ限定する。
 
 - `https://*.green-japan.com/*`
 - `https://*.doda.jp/*`
 - 入力されたApplyFlowのorigin
 
-外部ApplyFlowはHTTPSのみ許可し、HTTPは`localhost`と`127.0.0.1`だけ許可する。`cookies`、`history`、`tabs`、`webRequest`権限は要求しない。`activeTab`はユーザーが拡張アイコンを開いた現在タブにだけ一時アクセスする。
+ApplyFlow接続先はHTTPSのみ許可し、平文HTTPは設定保存前とAPI呼び出し前に拒否する。`cookies`、`history`、`tabs`、`webRequest`権限は要求しない。`activeTab`はユーザーが拡張アイコンを開いた現在タブにだけ一時アクセスする。
 
 Chrome公式仕様に従い、`chrome.permissions.request()`は設定保存というユーザージェスチャー内で実行する。許可済み媒体だけ`chrome.scripting.registerContentScripts()`で永続登録する。最低Chromeバージョンは、Storage access levelを利用できる102とする。
 
@@ -412,7 +413,7 @@ unique制約は`(userId, idempotencyKey)`と`(userId, applicationId, messageDige
 - サーバーはクライアントの正規化値や重複キーを信用せず再計算する。
 - ユーザー所有データは必ず認証Tokenの`userId`で絞り込む。
 - HTML文字列を求人値から組み立てず、フォームの`.value`または`textContent`へ設定する。
-- 外部環境への平文HTTPを拒否する。
+- ApplyFlow接続先への平文HTTPを拒否する。
 - CSPは`script-src 'self'; object-src 'none'`とし、remote codeを使用しない。
 - ログにToken、求人本文、Cookieを出力しない。
 - メッセージ本文は明示同意後の抽出要求にだけ含め、永続化・ログ出力しない。
@@ -467,13 +468,13 @@ npm run build
 
 ## 16. 導入・運用
 
-1. `npm install`、DB起動、環境変数設定を行う。
-2. `npm run prisma:migrate`で`20260715120000_add_browser_extension`と`20260715140000_add_browser_message_import`を適用する。
-3. `npm run extension:build`を実行する。
+1. Netlify / Neonデプロイ手順に従い、環境変数設定とDB migrationを完了する。
+2. Netlifyの本番HTTPS URLへPC版Chromeでアクセスできることを確認する。
+3. `npm install`後に`npm run extension:build`を実行する。
 4. `chrome://extensions`のデベロッパーモードで`browser-extension/dist`を読み込む。
 5. ApplyFlowへGoogleログインし、`/settings`で拡張Tokenを発行する。
 6. 対象媒体ページで拡張アイコンを開き、「このページで有効化」を押してChromeの権限を許可する。
-7. 保存機能を使う場合は、拡張機能の詳細設定へApplyFlow URLとTokenを入力する。
+7. 保存機能を使う場合は、拡張機能の詳細設定へApplyFlowの本番HTTPS URLとTokenを入力する。
 8. ボタンが見つからない場合はポップアップの診断結果を確認し、「現在ページへボタンを再挿入」を押す。
 
 障害時は拡張設定で該当媒体を無効化する。Token漏えいが疑われる場合はApplyFlow設定画面ですぐ失効し、再発行する。
@@ -545,3 +546,4 @@ npm run build
 | 2.3 | 2026-07-15 | メッセージから応募先も抽出し、完全一致の自動統合、表記ゆれ確認、未登録応募先の同時作成を追加 |
 | 2.4 | 2026-07-15 | 変更・取消の対象となる進行中面接がない場合、選択不能な必須欄を出さず新規登録へ自動補正するUXを追加 |
 | 2.5 | 2026-07-15 | メッセージ送信欄を避ける起動ボタン配置と、入力・抽出結果を保持したパネルの一時退避・再開を追加 |
+| 2.6 | 2026-08-17 | 実行環境を本番HTTPSに限定し、平文HTTP接続と開発用ホスト権限を削除 |

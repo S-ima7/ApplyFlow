@@ -77,7 +77,7 @@
     const value = stored[settingsKey];
     if (!isRecord(value)) {
       return {
-        apiBaseUrl: "http://localhost:3000",
+        apiBaseUrl: "",
         apiToken: "",
         defaultApplicationType: "CAREER_CHANGE",
         adapters: { GREEN: false, DODA: false }
@@ -85,7 +85,7 @@
     }
     const adapters = isRecord(value.adapters) ? value.adapters : {};
     return {
-      apiBaseUrl: typeof value.apiBaseUrl === "string" ? value.apiBaseUrl : "http://localhost:3000",
+      apiBaseUrl: typeof value.apiBaseUrl === "string" ? value.apiBaseUrl : "",
       apiToken: typeof value.apiToken === "string" ? value.apiToken : "",
       defaultApplicationType: isApplicationType(value.defaultApplicationType)
         ? value.defaultApplicationType

@@ -9,7 +9,7 @@
     DODA: "https://*.doda.jp/*"
   };
   const defaultSettings: ApplyFlowExtensionSettings = {
-    apiBaseUrl: "http://localhost:3000",
+    apiBaseUrl: "",
     apiToken: "",
     defaultApplicationType: "CAREER_CHANGE",
     adapters: {
@@ -50,8 +50,9 @@
     const value = stored[settingsKey];
     if (!isRecord(value)) return defaultSettings;
     const adapters = isRecord(value.adapters) ? value.adapters : {};
+    const apiBaseUrl = typeof value.apiBaseUrl === "string" ? parseApiBaseUrl(value.apiBaseUrl) : null;
     return {
-      apiBaseUrl: typeof value.apiBaseUrl === "string" ? value.apiBaseUrl : defaultSettings.apiBaseUrl,
+      apiBaseUrl: apiBaseUrl ?? defaultSettings.apiBaseUrl,
       apiToken: typeof value.apiToken === "string" ? value.apiToken : "",
       defaultApplicationType: isApplicationType(value.defaultApplicationType)
         ? value.defaultApplicationType
@@ -126,8 +127,11 @@
       if (typeof message.applicationUrl !== "string") {
         return { ok: false, code: "INVALID_URL", message: "URLが不正です" };
       }
+      const apiOrigin = parseApiBaseUrl(settings.apiBaseUrl);
+      if (!apiOrigin) {
+        return { ok: false, code: "INVALID_API_URL", message: "ApplyFlow URLにはHTTPS URLを設定してください" };
+      }
       const target = new URL(message.applicationUrl);
-      const apiOrigin = new URL(settings.apiBaseUrl).origin;
       if (target.origin !== apiOrigin || !target.pathname.startsWith("/applications/")) {
         return { ok: false, code: "INVALID_URL", message: "URLが許可されていません" };
       }
@@ -192,7 +196,7 @@
   ) {
     const baseUrl = parseApiBaseUrl(settings.apiBaseUrl);
     if (!baseUrl) {
-      return { ok: false, code: "INVALID_API_URL", message: "ApplyFlow URLが不正です" };
+      return { ok: false, code: "INVALID_API_URL", message: "ApplyFlow URLにはHTTPS URLを設定してください" };
     }
 
     const headers: Record<string, string> = {
@@ -245,8 +249,7 @@
   function parseApiBaseUrl(value: string) {
     try {
       const url = new URL(value);
-      const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-      if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) return null;
+      if (url.protocol !== "https:") return null;
       return url.origin;
     } catch {
       return null;

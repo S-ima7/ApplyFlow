@@ -137,11 +137,17 @@ describe("browser extension manifest", () => {
   it("uses Manifest V3 without sensitive browser permissions", () => {
     const manifest = JSON.parse(
       readFileSync("browser-extension/public/manifest.json", "utf8")
-    ) as { manifest_version: number; permissions?: string[]; host_permissions?: string[] };
+    ) as {
+      manifest_version: number;
+      permissions?: string[];
+      host_permissions?: string[];
+      optional_host_permissions?: string[];
+    };
 
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.permissions).toEqual(["storage", "scripting", "activeTab"]);
     expect(manifest.host_permissions).toBeUndefined();
+    expect(manifest.optional_host_permissions).toEqual(["https://*/*"]);
     expect(manifest.permissions).not.toEqual(
       expect.arrayContaining(["cookies", "history", "tabs", "webRequest"])
     );
