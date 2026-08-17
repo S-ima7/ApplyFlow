@@ -11,6 +11,7 @@ import { ExternalLink, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { importGoogleCalendarEvent } from "@/features/calendar/actions";
+import { watchResponsiveCalendarView } from "@/features/calendar/responsive-view";
 import type {
   CalendarApplicationOption,
   CalendarEvent,
@@ -41,9 +42,11 @@ export function CalendarClient({ events, applicationOptions }: CalendarClientPro
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (window.matchMedia("(max-width: 639px)").matches) {
-      calendarRef.current?.getApi().changeView("timeGridDay");
-    }
+    const compactViewport = window.matchMedia("(max-width: 639px)");
+
+    return watchResponsiveCalendarView(compactViewport, (view) => {
+      calendarRef.current?.getApi().changeView(view);
+    });
   }, []);
 
   useEffect(() => {
@@ -141,7 +144,7 @@ export function CalendarClient({ events, applicationOptions }: CalendarClientPro
             role="dialog"
             aria-modal="true"
             aria-labelledby="calendar-event-title"
-            className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:max-w-lg sm:rounded-xl"
+            className="max-h-[90dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:max-w-lg sm:rounded-xl sm:pb-5"
           >
             <div className="flex items-start justify-between gap-4">
               <div>

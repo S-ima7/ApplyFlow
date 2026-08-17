@@ -43,7 +43,7 @@ export default async function DeadlinesPage() {
                         {deadlineStatusLabels[deadline.status]}
                       </Badge>
                     </div>
-                    <div className="mt-4 flex items-end justify-between gap-3">
+                    <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
                       <div className="text-sm">
                         <p className="font-medium">{formatDateTime(deadline.dueAt)}</p>
                         <p className="text-xs text-slate-500">

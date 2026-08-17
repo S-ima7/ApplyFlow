@@ -11,7 +11,7 @@ type AppHeaderProps = {
 
 export function AppHeader({ userName, userEmail }: AppHeaderProps) {
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 md:px-6">
+    <header className="app-header sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white">
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
           選考管理CRM

@@ -25,7 +25,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="メインナビゲーション"
-      className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
+      className="mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-slate-200 bg-white/95 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur md:hidden"
     >
       {navItems.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -36,7 +36,7 @@ export function MobileNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex min-h-16 flex-col items-center justify-center gap-1 rounded-md px-1 text-[11px] font-semibold",
+              "flex min-h-16 flex-col items-center justify-center gap-1 rounded-md px-1 text-xs font-semibold",
               active ? "text-blue-700" : "text-slate-500"
             )}
           >

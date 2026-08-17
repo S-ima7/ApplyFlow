@@ -158,8 +158,8 @@ export function EmailImportConfirmForm({
       </div>
 
       <div className="rounded-md border border-slate-200 p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
             <p className="font-semibold text-slate-950">候補日時</p>
             <p className="text-sm text-slate-500">提示中の候補日時として登録します。</p>
           </div>

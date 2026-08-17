@@ -18,6 +18,7 @@ ApplyFlowは、就職・転職活動の応募先、選考フェーズ、面談�
 - 転職サイトの企業メッセージから面接の確定・候補・変更・取消を確認登録
 - メッセージから会社名・ポジションも抽出し、既存応募先の統合または新規作成
 - PC向けサイドバーとスマートフォン向けボトムナビゲーション
+- iPhone 14以降のSafari表示とホーム画面から起動できるPWA
 
 ## 技術スタック
 
@@ -81,6 +82,12 @@ npm run build
 
 既存DBの移行、OAuth redirect URI、無料枠の確認、ロールバックは[デプロイ・移行手順](docs/ApplyFlow_Netlify_Neonデプロイ手順.md)を参照してください。
 
+## iPhone Safari / PWA
+
+本番のHTTPS URLをiPhone Safariで開き、共有メニューの「ホーム画面に追加」を選ぶと、ApplyFlowをホーム画面から起動できます。対象はiPhone 14以降の、サポート中の最新iOS Safariです。
+
+PWAはオンライン前提です。Service Workerは認証済み画面やAPIレスポンスをキャッシュしないため、通信できない場合はSafari版と同様にデータを参照・更新できません。Chrome拡張機能はiOS Safariでは利用できません。
+
 ## Chrome拡張機能
 
 ```bash
@@ -117,6 +124,7 @@ npm run build
 - [アーキテクチャ設計書](docs/ApplyFlow_アーキテクチャ設計書.md)
 - [DB設計書](docs/ApplyFlow_DB設計書.md)
 - [UI/UX設計書](docs/ApplyFlow_UIUX設計書.md)
+- [iPhone Safari / PWA設計契約](docs/ApplyFlow_iPhone_PWA設計契約.md)
 - [ブラウザ拡張機能設計書](docs/ApplyFlow_ブラウザ拡張機能設計書.md)
 - [メール監視・無料AIデプロイ設計契約](docs/ApplyFlow_メール監視デプロイ設計契約.md)
 - [Netlify / Neonデプロイ・移行手順](docs/ApplyFlow_Netlify_Neonデプロイ手順.md)

@@ -50,14 +50,14 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-slate-950">ダッシュボード</h2>
           <p className="text-sm text-slate-500">今日と今週の対応事項を確認します。</p>
         </div>
         <Link
           href="/applications/new"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           新規応募
         </Link>

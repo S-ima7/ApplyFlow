@@ -72,8 +72,8 @@ export default async function SettingsPage() {
           <CardTitle>外部連携</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-slate-600">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
-            <div className="space-y-1">
+          <div className="flex flex-col items-stretch gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold text-slate-900">Google Calendar</p>
                 <Badge variant={googleCalendar.status === "connected" ? "success" : "warning"}>
@@ -89,19 +89,20 @@ export default async function SettingsPage() {
             </div>
             {googleCalendar.status !== "connected" ? (
               <form
+                className="sm:shrink-0"
                 action={async () => {
                   "use server";
                   await signIn("google", { redirectTo: "/settings" });
                 }}
               >
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" className="w-full sm:w-auto">
                   再ログイン
                 </Button>
               </form>
             ) : null}
           </div>
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
+          <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-semibold text-slate-900">Gmail</p>
                 <Badge variant={gmail.status === "connected" ? "success" : "warning"}>
@@ -113,12 +114,13 @@ export default async function SettingsPage() {
             </div>
             {gmail.status !== "connected" ? (
               <form
+                className="sm:shrink-0"
                 action={async () => {
                   "use server";
                   await signIn("google", { redirectTo: "/settings" });
                 }}
               >
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" className="w-full sm:w-auto">
                   再ログイン
                 </Button>
               </form>
@@ -162,9 +164,9 @@ function getGoogleCalendarStatusLabel(status: string) {
 
 function SettingRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-slate-100 pb-3 last:border-0">
+    <div className="flex flex-col items-start gap-1 border-b border-slate-100 pb-3 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-semibold text-slate-900">{value}</span>
+      <span className="break-all text-sm font-semibold text-slate-900 sm:text-right">{value}</span>
     </div>
   );
 }
