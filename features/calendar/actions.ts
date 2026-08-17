@@ -1,6 +1,6 @@
 "use server";
 
-import { ScheduleEventSource } from "@prisma/client";
+import { InterviewStatus, ScheduleEventSource } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { buildScheduleEventImportData } from "@/features/calendar/import";
 import {
@@ -8,7 +8,10 @@ import {
   type ImportGoogleCalendarEventInput
 } from "@/features/calendar/schema";
 import { requireUser } from "@/lib/auth-guard";
-import { getGoogleCalendarEventById } from "@/lib/google-calendar";
+import {
+  createGoogleCalendarInterviewEvent,
+  getGoogleCalendarEventById
+} from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
 
 export type CalendarImportActionResult =
@@ -19,6 +22,19 @@ export type CalendarImportActionResult =
     }
   | {
       ok: false;
+      message: string;
+    };
+
+export type CalendarExportActionResult =
+  | {
+      ok: true;
+      status: "created" | "already_exists";
+      message: string;
+      eventUrl?: string;
+    }
+  | {
+      ok: false;
+      status: "not_eligible" | "missing_scope" | "reauth_required" | "error";
       message: string;
     };
 
@@ -109,4 +125,92 @@ export async function importGoogleCalendarEvent(
       message: "予定の保存に失敗しました"
     };
   }
+}
+
+export async function registerConfirmedInterviewInGoogleCalendar(
+  interviewId: string
+): Promise<CalendarExportActionResult> {
+  const user = await requireUser();
+  const interview = await prisma.interview.findFirst({
+    where: {
+      id: interviewId,
+      userId: user.id,
+      deletedAt: null,
+      selectionStage: {
+        deletedAt: null,
+        application: {
+          deletedAt: null
+        }
+      }
+    },
+    include: {
+      selectionStage: {
+        include: {
+          application: {
+            include: {
+              company: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!interview) {
+    return {
+      ok: false,
+      status: "not_eligible",
+      message: "面談が見つかりません"
+    };
+  }
+
+  const startAt = interview.confirmedStartAt;
+  const endAt = interview.confirmedEndAt;
+
+  if (
+    interview.status !== InterviewStatus.CONFIRMED ||
+    !startAt ||
+    !endAt ||
+    Number.isNaN(startAt.getTime()) ||
+    Number.isNaN(endAt.getTime()) ||
+    startAt >= endAt
+  ) {
+    return {
+      ok: false,
+      status: "not_eligible",
+      message: "日時が正しい確定面談だけをGoogle Calendarへ登録できます"
+    };
+  }
+
+  const application = interview.selectionStage.application;
+  const result = await createGoogleCalendarInterviewEvent(user.id, {
+    interviewId: interview.id,
+    companyName: application.company.name,
+    position: application.position,
+    title: interview.title ?? interview.selectionStage.name,
+    location: interview.location,
+    meetingUrl: interview.meetingUrl,
+    note: interview.note,
+    startAt,
+    endAt
+  });
+
+  if (result.status === "created" || result.status === "already_exists") {
+    revalidatePath(`/applications/${application.id}`);
+    revalidatePath("/calendar");
+    revalidatePath("/dashboard");
+
+    return {
+      ok: true,
+      status: result.status,
+      message: result.message,
+      eventUrl: result.eventUrl
+    };
+  }
+
+  return {
+    ok: false,
+    status: result.status,
+    message: result.message
+  };
 }

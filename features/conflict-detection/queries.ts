@@ -8,7 +8,11 @@ import { prisma } from "@/lib/prisma";
 import { detectConflicts } from "@/features/conflict-detection";
 import { googleCalendarEventsToScheduleItems } from "@/features/conflict-detection/google-calendar";
 import type { ConflictAlert, ScheduleItem } from "@/features/conflict-detection/types";
-import { getGoogleCalendarEvents, type GoogleCalendarRange } from "@/lib/google-calendar";
+import {
+  getGoogleCalendarEvents,
+  getGoogleCalendarInterviewEventId,
+  type GoogleCalendarRange
+} from "@/lib/google-calendar";
 
 export async function getScheduleItemsForConflict(
   userId: string,
@@ -151,6 +155,11 @@ export async function getScheduleItemsForConflict(
         )
       )
   );
+  const exportedInterviewKeys = new Set(
+    interviews.map((interview) =>
+      getGoogleCalendarInterviewEventId(userId, interview.id)
+    )
+  );
 
   const scheduleItems: ScheduleItem[] = scheduleEvents.map((event) => ({
     id: `schedule:${event.id}`,
@@ -169,7 +178,10 @@ export async function getScheduleItemsForConflict(
       (event) =>
         !importedGoogleKeys.has(
           getGoogleCalendarImportKey(event.calendarId, event.externalEventId)
-        )
+        ) &&
+        (!event.applyFlowInterviewKey ||
+          event.externalEventId !== event.applyFlowInterviewKey ||
+          !exportedInterviewKeys.has(event.applyFlowInterviewKey))
     )
   );
 

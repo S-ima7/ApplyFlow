@@ -9,6 +9,7 @@ ApplyFlowは、就職・転職活動の応募先、選考フェーズ、面談�
 - 返信期限、承諾期限、提出期限の管理
 - アプリ内予定とGoogle Calendar予定の統合表示・衝突検知
 - Google Calendar予定のApplyFlowへの取り込み
+- 確定面談のGoogle Primary Calendarへの明示登録
 - Gmailの検索・本文取得
 - Gmail検索条件に合う新着メールを15分間隔で監視
 - メールから会社名、イベント種別、選考フェーズ、日時、期限、面談URLなどをAI抽出
@@ -63,9 +64,10 @@ Google Cloud側では、OAuthクライアントに加えてGoogle Calendar API�
 
 - `openid email profile`
 - `https://www.googleapis.com/auth/calendar.readonly`
+- `https://www.googleapis.com/auth/calendar.events.owned`
 - `https://www.googleapis.com/auth/gmail.readonly`
 
-Google CalendarとGmailへの書き込みは行いません。
+Google Calendarへの書き込みは、利用者が応募詳細で確定面談の登録ボタンを押した場合だけ行います。既存利用者は追加権限を許可するため、設定画面から再ログインしてください。Gmailへの書き込みは行いません。
 
 Cloudflare Dashboardで **Workers AI → Use REST API → Create a Workers AI API Token** を選び、`CLOUDFLARE_ACCOUNT_ID` と `CLOUDFLARE_API_TOKEN` を設定してください。手動作成するtokenには `Workers AI - Read` と `Workers AI - Edit` の両方を付与します。詳しくは[Cloudflare Workers AI REST APIの公式手順](https://developers.cloudflare.com/workers-ai/get-started/rest-api/)を参照してください。ApplyFlowは有料AI APIへフォールバックしません。
 
@@ -107,6 +109,7 @@ Chromeのデベロッパーモードで`browser-extension/dist`を読み込み�
 - Gmail本文と企業メッセージ本文はCloudflare Workers AI上の`@cf/openai/gpt-oss-120b`へ一時送信します。ApplyFlowはメール本文をCloudflareの保存サービスへ保存せず、生本文をDBやログへも保存しません。
 - 企業メッセージは利用者が選択して同意した本文だけをAI抽出時に送信し、生本文はDBへ保存しません。
 - Google Calendarから取り込んだ予定はApplyFlow所有のスナップショットとして保存します。再取り込み時は同じ外部イベントを更新し、重複作成しません。
+- Google Calendarへ登録する確定面談は、利用者と面談IDから生成した決定的なイベントIDで重複作成を防ぎます。自動登録、更新・削除同期は行いません。
 
 ## 品質チェック
 
@@ -125,6 +128,7 @@ npm run build
 - [DB設計書](docs/ApplyFlow_DB設計書.md)
 - [UI/UX設計書](docs/ApplyFlow_UIUX設計書.md)
 - [iPhone Safari / PWA設計契約](docs/ApplyFlow_iPhone_PWA設計契約.md)
+- [Google Calendar登録設計契約](docs/ApplyFlow_Google_Calendar登録設計契約.md)
 - [ブラウザ拡張機能設計書](docs/ApplyFlow_ブラウザ拡張機能設計書.md)
 - [メール監視・無料AIデプロイ設計契約](docs/ApplyFlow_メール監視デプロイ設計契約.md)
 - [Netlify / Neonデプロイ・移行手順](docs/ApplyFlow_Netlify_Neonデプロイ手順.md)

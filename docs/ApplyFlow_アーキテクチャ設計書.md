@@ -1,6 +1,6 @@
-# ApplyFlow アーキテクチャ設計書 v1.4
+# ApplyFlow アーキテクチャ設計書 v1.5
 
-更新日: 2026-07-27
+更新日: 2026-08-17
 
 ## 1. システム構成
 
@@ -9,7 +9,7 @@ Browser
   -> Next.js App Router / Server Components / Server Actions
       -> Auth.js + Google OAuth
       -> Prisma Client -> PostgreSQL
-      -> Google Calendar API (readonly)
+      -> Google Calendar API (readonly + Primary Calendarへの明示的な予定登録)
       -> Gmail API (readonly)
       -> Cloudflare Workers AI REST API / @cf/openai/gpt-oss-120b
 
@@ -61,7 +61,7 @@ Auth.jsのPrisma AdapterとDBセッションを使用する。ログイン時に
 - access token期限判定
 - refresh tokenによるaccess token更新
 
-CalendarとGmailはこの共通処理を利用する。要求scopeはopenid/profile/email、Calendar readonly、Gmail readonlyである。
+CalendarとGmailはこの共通処理を利用する。要求scopeはopenid/profile/email、Calendar readonly、Calendar events owned、Gmail readonlyである。Calendar events ownedは利用者所有カレンダーの予定にだけ作用する最小権限として使用する。
 
 ## 4. Calendar表示フロー
 
@@ -100,6 +100,22 @@ userId + source + externalCalendarId + externalEventId
 ```
 
 取り込みは一回限りのコピーを基本とする。同じ予定を再度取り込むと最新スナップショットで更新するが、バックグラウンド同期は行わない。
+
+## 5.1 確定面談のGoogle Calendar登録フロー
+
+```text
+応募詳細の確定面談
+  -> 利用者が登録ボタンを押す
+  -> Server ActionがInterviewをuserId付きでDBから再取得
+  -> CONFIRMED / confirmedStartAt / confirmedEndAtを検証
+  -> userIdとInterview.idからSHA-256 event idを生成
+  -> Google events.insert(calendarId=primary, sendUpdates=none)
+      -> 成功: 作成済みURLを返す
+      -> 409: events.getでprivate markerを確認し、登録済み成功を返す
+      -> scope不足: 設定画面の再ログインへ誘導
+```
+
+DBにはGoogle側event IDを追加保存しない。決定的event IDとGoogleイベントのprivate markerで冪等性と409時の所有確認を行う。登録済みイベントはCalendar APIの取得結果から除外し、元のInterviewとの二重表示・自己衝突を防ぐ。クライアント入力はInterview IDだけとし、タイトル・日時・会社・ポジション・場所・面談URL・説明は所有権検証後のDBレコードから組み立てる。
 
 ## 6. 衝突検知
 

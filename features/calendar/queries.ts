@@ -7,6 +7,7 @@ import {
 import { getGoogleCalendarImportKey } from "@/features/calendar/import";
 import {
   getGoogleCalendarEvents,
+  getGoogleCalendarInterviewEventId,
   type GoogleCalendarConnection
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
@@ -129,6 +130,11 @@ export async function getCalendarData(userId: string): Promise<CalendarData> {
         )
       )
   );
+  const exportedInterviewKeys = new Set(
+    interviews.map((interview) =>
+      getGoogleCalendarInterviewEventId(userId, interview.id)
+    )
+  );
 
   const events: CalendarEvent[] = [
     ...interviews
@@ -220,7 +226,10 @@ export async function getCalendarData(userId: string): Promise<CalendarData> {
         (event) =>
           !importedGoogleKeys.has(
             getGoogleCalendarImportKey(event.calendarId, event.externalEventId)
-          )
+          ) &&
+          (!event.applyFlowInterviewKey ||
+            event.externalEventId !== event.applyFlowInterviewKey ||
+            !exportedInterviewKeys.has(event.applyFlowInterviewKey))
       )
       .map((event) => ({
         id: event.id,
