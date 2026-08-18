@@ -114,6 +114,7 @@ type ApplyFlowExtractionApi = {
 };
 
 type ApplyFlowChromeMessageSender = {
+  origin?: string;
   url?: string;
   tab?: {
     id?: number;

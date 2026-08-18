@@ -247,7 +247,10 @@
     ) {
       return false;
     }
-    const senderUrl = sender.url ?? sender.tab?.url;
+    const senderUrl =
+      sender.origin && sender.origin !== "null"
+        ? sender.origin
+        : sender.url ?? sender.tab?.url;
     if (!senderUrl) return false;
 
     try {

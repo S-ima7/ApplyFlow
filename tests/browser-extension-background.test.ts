@@ -136,10 +136,75 @@ describe("browser extension service worker connection boundary", () => {
     }
   );
 
-  function sendMessage(message: unknown, senderUrl: string) {
+  it.each(["EXTRACT_MESSAGE", "REGISTER_MESSAGE_EVENT"] as const)(
+    "accepts %s from the current Recruit Agent mypage origin",
+    async (operation) => {
+      const response = await sendMessage(
+        {
+          type: operation,
+          idempotencyKey: "test-idempotency-key",
+          payload: {
+            sourceSite: "RECRUIT_AGENT",
+            sourceUrl: "https://mypage.r-agent.com/applied/interviews"
+          }
+        },
+        {
+          origin: "https://mypage.r-agent.com",
+          url: "about:blank",
+          tab: { url: "https://mypage.r-agent.com/applied/interviews" }
+        }
+      );
+
+      expect(response).toEqual({ ok: true });
+      expect(fetchApi).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each([
+    ["LOOKUP_CAPTURE", "www.r-agent.com", "www.r-agent.com", true],
+    ["LOOKUP_CAPTURE", "mypage.r-agent.com", "www.r-agent.com", false],
+    ["LOOKUP_CAPTURE", "www.r-agent.com", "mypage.r-agent.com", false],
+    ["SAVE_CAPTURE", "www.r-agent.com", "www.r-agent.com", true],
+    ["SAVE_CAPTURE", "mypage.r-agent.com", "www.r-agent.com", false],
+    ["SAVE_CAPTURE", "www.r-agent.com", "mypage.r-agent.com", false]
+  ] as const)(
+    "%s uses sender origin %s with payload %s as allowed=%s",
+    async (operation, originHost, payloadHost, allowed) => {
+      const response = await sendMessage(
+        {
+          type: operation,
+          idempotencyKey: "test-idempotency-key",
+          payload: {
+            sourceSite: "RECRUIT_AGENT",
+            sourceUrl: `https://${payloadHost}/viewjob/test`
+          }
+        },
+        {
+          origin: `https://${originHost}`,
+          url: "https://www.r-agent.com/viewjob/test",
+          tab: { url: "https://www.r-agent.com/viewjob/test" }
+        }
+      );
+
+      if (allowed) {
+        expect(response).toEqual({ ok: true });
+        expect(fetchApi).toHaveBeenCalledTimes(1);
+        return;
+      }
+
+      expect(response).toEqual({
+        ok: false,
+        code: "UNTRUSTED_SENDER",
+        message: "許可されていないページです"
+      });
+      expect(fetchApi).not.toHaveBeenCalled();
+    }
+  );
+
+  function sendMessage(message: unknown, sender: string | ApplyFlowChromeMessageSender) {
     if (!handleMessage) throw new Error("Service Workerのmessage listenerを初期化できませんでした");
     return new Promise<unknown>((resolve) => {
-      handleMessage?.(message, { url: senderUrl }, resolve);
+      handleMessage?.(message, typeof sender === "string" ? { url: sender } : sender, resolve);
     });
   }
 });
