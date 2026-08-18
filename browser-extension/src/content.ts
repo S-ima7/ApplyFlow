@@ -13,6 +13,12 @@
   let suspendedDrawerFocus: HTMLElement | null = null;
   let navigationTimer: number | undefined;
   let currentHost: HTMLElement | null = null;
+  let selectionEpoch = 0;
+  let invalidatedSelectionEpoch = 0;
+  let topSelectionEpoch = 0;
+  let lastFocusedFrame: HTMLIFrameElement | null = null;
+  const frameSelectionEpochs = new WeakMap<HTMLIFrameElement, number>();
+  const trackedFrameDocuments = new WeakSet<Document>();
 
   function evaluatePage() {
     lastUrl = location.href;
@@ -26,6 +32,7 @@
       currentHost = null;
       return;
     }
+    if (site === "RECRUIT_AGENT") trackFrameSelections();
     if (existing && (existing.dataset.site !== site || existing.dataset.mode !== mode)) {
       existing.remove();
       existing = null;
@@ -98,12 +105,21 @@
     );
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
       const candidate = candidates[index];
-      if (candidate.hidden || candidate.getAttribute("aria-hidden") === "true") continue;
-      const style = getComputedStyle(candidate);
-      if (style.display === "none" || style.visibility === "hidden") continue;
+      if (!isVisible(candidate)) continue;
       return candidate;
     }
     return null;
+  }
+
+  function isVisible(element: HTMLElement) {
+    for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+      if (current.hidden || current.getAttribute("aria-hidden") === "true") return false;
+      const style = getComputedStyle(current);
+      if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") {
+        return false;
+      }
+    }
+    return true;
   }
 
   function wireCommonDrawer(
@@ -246,7 +262,7 @@
     previouslyFocused = trigger;
     trigger.setAttribute("aria-expanded", "true");
     if (overlay.dataset.suspended === "true") {
-      lastSelectedText = "";
+      invalidateSelections();
       overlay.hidden = false;
       delete overlay.dataset.suspended;
       trigger.textContent = trigger.dataset.expandedLabel || "面接日時を抽出";
@@ -335,17 +351,45 @@
 
   function readCurrentSelection() {
     const selectedText = window.getSelection()?.toString().trim() ?? "";
-    if (selectedText) return selectedText;
+    if (selectedText && topSelectionEpoch > invalidatedSelectionEpoch) return selectedText;
 
-    for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe")) {
-      try {
-        const frameSelection = frame.contentWindow?.getSelection()?.toString().trim() ?? "";
-        if (frameSelection) return frameSelection;
-      } catch {
-        // Cross-origin frames are intentionally skipped because Chrome blocks their document access.
-      }
+    const activeElement = document.activeElement;
+    const frame = activeElement instanceof HTMLIFrameElement ? activeElement : lastFocusedFrame;
+    if (!frame?.isConnected) return "";
+    trackFrameSelection(frame);
+    if ((frameSelectionEpochs.get(frame) ?? 0) <= invalidatedSelectionEpoch) return "";
+
+    try {
+      return frame.contentWindow?.getSelection()?.toString().trim() ?? "";
+    } catch {
+      // Cross-origin frames are intentionally skipped because Chrome blocks their document access.
+      return "";
     }
-    return "";
+  }
+
+  function trackFrameSelections() {
+    for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe")) {
+      trackFrameSelection(frame);
+    }
+  }
+
+  function trackFrameSelection(frame: HTMLIFrameElement) {
+    try {
+      const frameDocument = frame.contentDocument;
+      if (!frameDocument || trackedFrameDocuments.has(frameDocument)) return;
+      trackedFrameDocuments.add(frameDocument);
+      frameDocument.addEventListener("selectionchange", () => {
+        frameSelectionEpochs.set(frame, ++selectionEpoch);
+      });
+    } catch {
+      // Cross-origin frames are intentionally skipped because Chrome blocks their document access.
+    }
+  }
+
+  function invalidateSelections() {
+    invalidatedSelectionEpoch = selectionEpoch;
+    lastSelectedText = "";
+    lastFocusedFrame = null;
   }
 
   async function extractSelectedMessage(overlay: HTMLElement, site: ApplyFlowSourceSite) {
@@ -790,6 +834,7 @@
   }
 
   function suspendMessageDrawer(overlay: HTMLElement, trigger: HTMLButtonElement) {
+    invalidateSelections();
     trigger.dataset.expandedLabel = trigger.textContent || "面接日時を抽出";
     trigger.textContent = "日時抽出を再開";
     trigger.setAttribute("aria-label", "入力内容を保持したまま日時抽出パネルを再開");
@@ -940,6 +985,17 @@
     :host{all:initial;color-scheme:light}*,*::before,*::after{box-sizing:border-box}button,input,select,textarea{font:inherit}.af-floating-button{position:fixed;right:24px;bottom:24px;z-index:2147483646;border:0;border-radius:999px;background:#2563eb;color:#fff;padding:13px 18px;box-shadow:0 10px 30px rgba(15,23,42,.25);font:700 14px Arial,"Yu Gothic",sans-serif;cursor:pointer}.af-floating-button-message{bottom:96px}.af-floating-button:hover{background:#1d4ed8}.af-floating-button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}.af-overlay{position:fixed;inset:0;z-index:2147483647;pointer-events:none;font:14px/1.5 Arial,"Yu Gothic",sans-serif;color:#152033}.af-overlay[hidden],[hidden]{display:none!important}.af-drawer{position:absolute;inset:0 0 0 auto;width:min(500px,calc(100vw - 48px));overflow:auto;pointer-events:auto;background:#f8fafc;border-left:1px solid #d9dee8;box-shadow:-12px 0 40px rgba(15,23,42,.2)}.af-header{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;border-bottom:1px solid #d9dee8;background:#fff}.af-header h2{margin:2px 0 0;font-size:20px;line-height:1.25}.af-eyebrow{color:#2563eb;font-size:11px;font-weight:800;letter-spacing:.12em}.af-icon-button{width:36px;height:36px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font-size:24px;cursor:pointer}.af-body{padding:20px 22px 28px}.af-message{margin:0 0 14px;border-radius:8px;padding:10px 12px;background:#eff6ff;color:#1e3a8a}.af-message[data-tone="success"]{background:#ecfdf3;color:#166534}.af-message[data-tone="error"]{background:#fef2f2;color:#b91c1c}.af-help{margin:4px 0;color:#64748b;font-size:12px}.af-source{margin:0 0 18px;color:#64748b;font-size:11px;overflow-wrap:anywhere}form{display:grid;gap:14px}label{display:grid;gap:6px;color:#334155;font-size:12px;font-weight:700}input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;padding:10px 11px;font-size:14px}input:disabled,select:disabled{background:#f1f5f9;color:#475569}textarea{resize:vertical}.af-check{display:flex;align-items:flex-start;gap:9px;font-weight:500;line-height:1.45}.af-check input{width:auto;margin-top:3px}.af-privacy{margin:0;color:#64748b;font-size:11px}.af-selection-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff;padding:10px 12px}.af-selection-tools p{margin:0;color:#1e3a8a;font-size:12px}.af-selection-tools button{flex:none}.af-actions{display:flex;justify-content:flex-end;gap:10px;padding-top:4px}.af-actions-between{justify-content:space-between}.af-primary,.af-secondary{border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}.af-primary{border:1px solid #2563eb;background:#2563eb;color:#fff}.af-primary:hover{background:#1d4ed8}.af-primary:disabled{cursor:wait;opacity:.6}.af-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.af-existing{border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;padding:16px}.af-existing p{margin:5px 0 14px;color:#475569}.af-review-summary{margin:0 0 14px;border:1px solid #bfdbfe;border-radius:8px;background:#eff6ff;padding:10px 12px;color:#1e3a8a;font-size:12px}.af-destination-section{display:grid;gap:12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;padding:14px}.af-destination-section h3{margin:0;font-size:15px}.af-destination-hint{margin:0;border-radius:8px;background:#f8fafc;padding:9px 10px;color:#475569;font-size:12px}.af-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.af-schedule-fields{display:grid;gap:12px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:14px}.af-schedule-fields h3{margin:0;font-size:13px}.af-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.af-text-button{border:0;background:transparent;color:#2563eb;padding:2px;font-size:12px;font-weight:700;cursor:pointer}#af-proposed-slots{display:grid;gap:10px}.af-slot-row{display:grid;grid-template-columns:1fr 1fr auto;align-items:end;gap:10px;border-bottom:1px solid #e2e8f0;padding-bottom:10px}.af-slot-remove{border:1px solid #fecaca;border-radius:8px;background:#fff;color:#b91c1c;padding:10px 8px;font-size:12px;cursor:pointer}@media(max-width:520px){.af-floating-button{right:12px;bottom:12px}.af-floating-button-message{bottom:88px}.af-drawer{inset:auto 0 0;width:100vw;max-height:72vh;border-top:1px solid #d9dee8;border-left:0;border-radius:16px 16px 0 0}.af-body{padding:16px}.af-grid,.af-slot-row{grid-template-columns:1fr}.af-selection-tools{align-items:stretch;flex-direction:column}.af-slot-remove{justify-self:start}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
   `;
 
+  document.addEventListener("selectionchange", () => {
+    topSelectionEpoch = ++selectionEpoch;
+  });
+  document.addEventListener("focusin", (event) => {
+    if (event.target instanceof HTMLIFrameElement) {
+      lastFocusedFrame = event.target;
+      trackFrameSelection(event.target);
+      return;
+    }
+    if (event.target !== currentHost) lastFocusedFrame = null;
+  });
   evaluatePage();
   window.addEventListener("popstate", () => window.setTimeout(evaluatePage, 0));
   window.addEventListener("hashchange", () => window.setTimeout(evaluatePage, 0));
@@ -958,6 +1014,7 @@
       return;
     }
     if (currentHost?.dataset.site === "RECRUIT_AGENT") {
+      trackFrameSelections();
       placeUiHost(currentHost, "RECRUIT_AGENT");
     }
   }, 1_000);
