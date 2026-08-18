@@ -7,6 +7,7 @@ import {
   buildBrowserMessageDigest,
   buildBrowserExtensionSourceKey,
   normalizeCapturedUrl,
+  validateCaptureSourceHost,
   validateSourceHost
 } from "@/features/browser-extension/contracts";
 import {
@@ -37,6 +38,26 @@ describe("browser extension API contract", () => {
   it("rejects a source-site and host mismatch", () => {
     expect(validateSourceHost("GREEN", "https://doda.jp/job/1")).toBe(false);
     expect(validateSourceHost("DODA", "https://sub.doda.jp/job/1")).toBe(true);
+    expect(validateSourceHost("RECRUIT_AGENT", "https://r-agent.com/viewjob/job-1/")).toBe(true);
+    expect(validateSourceHost("RECRUIT_AGENT", "https://www.r-agent.com/viewjob/job-1/")).toBe(true);
+    expect(validateSourceHost("RECRUIT_AGENT", "https://pdt.r-agent.com/pdt/app/messages")).toBe(true);
+    expect(validateSourceHost("RECRUIT_AGENT", "https://r-agent.com.example.com/viewjob/job-1/")).toBe(false);
+    expect(validateCaptureSourceHost("RECRUIT_AGENT", "https://www.r-agent.com/viewjob/job-1/")).toBe(true);
+    expect(validateCaptureSourceHost("RECRUIT_AGENT", "https://pdt.r-agent.com/viewjob/job-1/")).toBe(false);
+  });
+
+  it("accepts Recruit Agent capture payloads", () => {
+    const result = browserExtensionCaptureSchema.safeParse({
+      sourceSite: "RECRUIT_AGENT",
+      sourceUrl: "https://www.r-agent.com/viewjob/jkba8aa617cbdbc525/",
+      sourceJobId: "jkba8aa617cbdbc525",
+      companyName: "サンプル株式会社",
+      position: "プロダクトエンジニア",
+      applicationType: "CAREER_CHANGE",
+      capturedAt: "2026-07-15T12:00:00+09:00",
+      adapterVersion: "1.0.0"
+    });
+    expect(result.success).toBe(true);
   });
 
   it("validates the complete capture payload", () => {

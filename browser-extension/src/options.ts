@@ -2,7 +2,13 @@
   const settingsKey = "settings";
   const sitePatterns: Record<ApplyFlowSourceSite, string> = {
     GREEN: "https://*.green-japan.com/*",
-    DODA: "https://*.doda.jp/*"
+    DODA: "https://*.doda.jp/*",
+    RECRUIT_AGENT: "https://*.r-agent.com/*"
+  };
+  const adapterCheckboxes: Record<ApplyFlowSourceSite, string> = {
+    GREEN: "#adapter-green",
+    DODA: "#adapter-doda",
+    RECRUIT_AGENT: "#adapter-recruit-agent"
   };
   const form = document.querySelector<HTMLFormElement>("#settings-form");
   const status = document.querySelector<HTMLElement>("#status");
@@ -30,6 +36,7 @@
     const adapters = isRecord(value.adapters) ? value.adapters : {};
     setChecked("#adapter-green", adapters.GREEN === true);
     setChecked("#adapter-doda", adapters.DODA === true);
+    setChecked("#adapter-recruit-agent", adapters.RECRUIT_AGENT === true);
   }
 
   async function saveSettings() {
@@ -47,8 +54,8 @@
       return;
     }
 
-    const requestedSites = (["GREEN", "DODA"] as const).filter((site) =>
-      getChecked(site === "GREEN" ? "#adapter-green" : "#adapter-doda")
+    const requestedSites = (["GREEN", "DODA", "RECRUIT_AGENT"] as const).filter((site) =>
+      getChecked(adapterCheckboxes[site])
     );
     const requestedOrigins = [apiPattern, ...requestedSites.map((site) => sitePatterns[site])];
     const granted = await chrome.permissions.request({ origins: requestedOrigins });
@@ -60,7 +67,8 @@
 
     const adapters: ApplyFlowExtensionSettings["adapters"] = {
       GREEN: requestedSites.includes("GREEN"),
-      DODA: requestedSites.includes("DODA")
+      DODA: requestedSites.includes("DODA"),
+      RECRUIT_AGENT: requestedSites.includes("RECRUIT_AGENT")
     };
     const settings: ApplyFlowExtensionSettings = {
       apiBaseUrl: new URL(apiBaseUrl).origin,
@@ -70,7 +78,7 @@
     };
     await chrome.storage.local.set({ [settingsKey]: settings });
 
-    for (const site of ["GREEN", "DODA"] as const) {
+    for (const site of ["GREEN", "DODA", "RECRUIT_AGENT"] as const) {
       if (!adapters[site] && (await chrome.permissions.contains({ origins: [sitePatterns[site]] }))) {
         await chrome.permissions.remove({ origins: [sitePatterns[site]] });
       }
@@ -90,7 +98,7 @@
         apiBaseUrl: "",
         apiToken: "",
         defaultApplicationType: "CAREER_CHANGE",
-        adapters: { GREEN: false, DODA: false }
+        adapters: { GREEN: false, DODA: false, RECRUIT_AGENT: false }
       }
     });
     await chrome.runtime.sendMessage({ type: "SYNC_REGISTRATIONS" });

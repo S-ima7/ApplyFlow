@@ -2,7 +2,8 @@
   const settingsKey = "settings";
   const sitePatterns: Record<ApplyFlowSourceSite, string> = {
     GREEN: "https://*.green-japan.com/*",
-    DODA: "https://*.doda.jp/*"
+    DODA: "https://*.doda.jp/*",
+    RECRUIT_AGENT: "https://*.r-agent.com/*"
   };
   const status = document.querySelector<HTMLElement>("#page-status");
   const activateButton = document.querySelector<HTMLButtonElement>("#activate-current");
@@ -22,7 +23,7 @@
     currentSite = getSite(currentTab?.url);
 
     if (!currentSite || !currentTab?.id) {
-      setStatus("このページは対象のGreen・dodaページではありません。", "error");
+      setStatus("このページは対象の求人・企業メッセージ媒体ではありません。", "error");
       return;
     }
 
@@ -80,7 +81,7 @@
         apiBaseUrl: "",
         apiToken: "",
         defaultApplicationType: "CAREER_CHANGE",
-        adapters: { GREEN: false, DODA: false }
+        adapters: { GREEN: false, DODA: false, RECRUIT_AGENT: false }
       };
     }
     const adapters = isRecord(value.adapters) ? value.adapters : {};
@@ -92,7 +93,8 @@
         : "CAREER_CHANGE",
       adapters: {
         GREEN: adapters.GREEN === true,
-        DODA: adapters.DODA === true
+        DODA: adapters.DODA === true,
+        RECRUIT_AGENT: adapters.RECRUIT_AGENT === true
       }
     };
   }
@@ -103,6 +105,7 @@
       const url = new URL(value);
       if (isHost(url.hostname, "green-japan.com")) return "GREEN";
       if (isHost(url.hostname, "doda.jp")) return "DODA";
+      if (isHost(url.hostname, "r-agent.com")) return "RECRUIT_AGENT";
       return null;
     } catch {
       return null;

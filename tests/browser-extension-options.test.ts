@@ -19,6 +19,7 @@ describe("browser extension connection settings", () => {
         <select id="default-application-type"><option value="CAREER_CHANGE">転職</option></select>
         <input id="adapter-green" type="checkbox" />
         <input id="adapter-doda" type="checkbox" />
+        <input id="adapter-recruit-agent" type="checkbox" />
         <button type="submit">保存</button>
       </form>
       <button id="reset-settings" type="button">削除</button>
@@ -43,7 +44,7 @@ describe("browser extension connection settings", () => {
               apiBaseUrl: "http://legacy.invalid",
               apiToken: "",
               defaultApplicationType: "CAREER_CHANGE",
-              adapters: { GREEN: false, DODA: false }
+              adapters: { GREEN: false, DODA: false, RECRUIT_AGENT: false }
             }
           })),
           set: save,
@@ -74,9 +75,11 @@ describe("browser extension connection settings", () => {
 
     const form = document.querySelector<HTMLFormElement>("#settings-form");
     const apiBaseUrl = document.querySelector<HTMLInputElement>("#api-base-url");
+    const recruitAgent = document.querySelector<HTMLInputElement>("#adapter-recruit-agent");
     const status = document.querySelector<HTMLElement>("#status");
     expect(form).not.toBeNull();
     expect(apiBaseUrl).not.toBeNull();
+    expect(recruitAgent).not.toBeNull();
     expect(status).not.toBeNull();
 
     await waitFor(() => expect(apiBaseUrl?.value).toBe(""));
@@ -90,18 +93,19 @@ describe("browser extension connection settings", () => {
     expect(save).not.toHaveBeenCalled();
 
     fireEvent.input(apiBaseUrl, { target: { value: "https://applyflow.example.com/path" } });
+    fireEvent.click(recruitAgent!);
     fireEvent.submit(form);
 
     await waitFor(() => {
       expect(requestPermission).toHaveBeenCalledWith({
-        origins: ["https://applyflow.example.com/*"]
+        origins: ["https://applyflow.example.com/*", "https://*.r-agent.com/*"]
       });
       expect(save).toHaveBeenCalledWith({
         settings: {
           apiBaseUrl: "https://applyflow.example.com",
           apiToken: "",
           defaultApplicationType: "CAREER_CHANGE",
-          adapters: { GREEN: false, DODA: false }
+          adapters: { GREEN: false, DODA: false, RECRUIT_AGENT: true }
         }
       });
     });

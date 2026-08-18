@@ -1,5 +1,5 @@
 (function initializeApplyFlowExtraction() {
-  const adapterVersion = "1.0.0";
+  const adapterVersion = "1.1.0";
   const missingField = (): ApplyFlowExtractedField => ({
     confidence: "missing",
     source: "visible_dom"
@@ -43,6 +43,19 @@
         url.pathname.match(/j_jid__([a-zA-Z0-9_-]+)/i)?.[1] ??
         url.searchParams.get("jid") ??
         undefined
+    },
+    {
+      site: "RECRUIT_AGENT",
+      matchesUrl: (url) =>
+        url.hostname.toLowerCase() === "www.r-agent.com" &&
+        /^\/viewjob\/[^/]+\/?$/i.test(url.pathname),
+      companySelectors: [
+        "[data-testid='company-name']",
+        "[data-test='company-name']",
+        ".company-name"
+      ],
+      titleSelectors: ["h1", "[data-testid='job-title']", ".job-title"],
+      jobId: (url) => url.pathname.match(/^\/viewjob\/([^/]+)\/?$/i)?.[1]
     }
   ];
 

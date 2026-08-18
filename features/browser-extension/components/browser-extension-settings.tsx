@@ -52,7 +52,7 @@ export function BrowserExtensionSettings({ tokens }: { tokens: TokenSummary[] })
         <ol className="mt-2 list-decimal space-y-1 pl-5">
           <li>下のボタンで専用トークンを発行します。</li>
           <li>拡張機能の設定でApplyFlow URLとトークンを保存します。</li>
-          <li>Greenまたはdodaへのアクセス権限を個別に有効化します。</li>
+          <li>Green、doda、リクルートエージェントへのアクセス権限を個別に有効化します。</li>
         </ol>
         <p className="mt-2 text-xs text-blue-800">
           トークンは発行直後に一度だけ表示します。紛失時は失効して再発行してください。

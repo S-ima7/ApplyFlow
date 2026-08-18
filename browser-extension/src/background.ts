@@ -2,11 +2,13 @@
   const settingsKey = "settings";
   const scriptIds: Record<ApplyFlowSourceSite, string> = {
     GREEN: "applyflow-green",
-    DODA: "applyflow-doda"
+    DODA: "applyflow-doda",
+    RECRUIT_AGENT: "applyflow-recruit-agent"
   };
   const sitePatterns: Record<ApplyFlowSourceSite, string> = {
     GREEN: "https://*.green-japan.com/*",
-    DODA: "https://*.doda.jp/*"
+    DODA: "https://*.doda.jp/*",
+    RECRUIT_AGENT: "https://*.r-agent.com/*"
   };
   const defaultSettings: ApplyFlowExtensionSettings = {
     apiBaseUrl: "",
@@ -14,7 +16,8 @@
     defaultApplicationType: "CAREER_CHANGE",
     adapters: {
       GREEN: false,
-      DODA: false
+      DODA: false,
+      RECRUIT_AGENT: false
     }
   };
   let registrationSync = Promise.resolve();
@@ -59,7 +62,8 @@
         : defaultSettings.defaultApplicationType,
       adapters: {
         GREEN: adapters.GREEN === true,
-        DODA: adapters.DODA === true
+        DODA: adapters.DODA === true,
+        RECRUIT_AGENT: adapters.RECRUIT_AGENT === true
       }
     };
   }
@@ -74,7 +78,7 @@
     }
 
     const scripts: ApplyFlowRegisteredContentScript[] = [];
-    for (const site of ["GREEN", "DODA"] as const) {
+    for (const site of ["GREEN", "DODA", "RECRUIT_AGENT"] as const) {
       if (!settings.adapters[site]) continue;
       const matches = [sitePatterns[site]];
       if (!(await chrome.permissions.contains({ origins: matches }))) continue;
@@ -140,7 +144,10 @@
     }
 
     if (message.type === "LOOKUP_CAPTURE" || message.type === "SAVE_CAPTURE") {
-      if (!isRecord(message.payload) || !isTrustedCaptureSender(sender, message.payload)) {
+      if (
+        !isRecord(message.payload) ||
+        !isTrustedCaptureSender(message.type, sender, message.payload)
+      ) {
         return { ok: false, code: "UNTRUSTED_SENDER", message: "許可されていないページです" };
       }
       if (!settings.apiToken) {
@@ -163,7 +170,10 @@
     }
 
     if (message.type === "EXTRACT_MESSAGE" || message.type === "REGISTER_MESSAGE_EVENT") {
-      if (!isRecord(message.payload) || !isTrustedCaptureSender(sender, message.payload)) {
+      if (
+        !isRecord(message.payload) ||
+        !isTrustedCaptureSender(message.type, sender, message.payload)
+      ) {
         return { ok: false, code: "UNTRUSTED_SENDER", message: "許可されていないページです" };
       }
       if (!settings.apiToken) {
@@ -225,10 +235,16 @@
   }
 
   function isTrustedCaptureSender(
+    operation: "LOOKUP_CAPTURE" | "SAVE_CAPTURE" | "EXTRACT_MESSAGE" | "REGISTER_MESSAGE_EVENT",
     sender: ApplyFlowChromeMessageSender,
     payload: Record<string, unknown>
   ) {
-    if ((payload.sourceSite !== "GREEN" && payload.sourceSite !== "DODA") || typeof payload.sourceUrl !== "string") {
+    if (
+      (payload.sourceSite !== "GREEN" &&
+        payload.sourceSite !== "DODA" &&
+        payload.sourceSite !== "RECRUIT_AGENT") ||
+      typeof payload.sourceUrl !== "string"
+    ) {
       return false;
     }
     const senderUrl = sender.url ?? sender.tab?.url;
@@ -238,9 +254,19 @@
       const senderHost = new URL(senderUrl).hostname.toLowerCase();
       const payloadUrl = new URL(payload.sourceUrl);
       const payloadHost = payloadUrl.hostname.toLowerCase();
-      return payload.sourceSite === "GREEN"
-        ? isHost(senderHost, "green-japan.com") && isHost(payloadHost, "green-japan.com")
-        : isHost(senderHost, "doda.jp") && isHost(payloadHost, "doda.jp");
+      if (
+        payload.sourceSite === "RECRUIT_AGENT" &&
+        (operation === "LOOKUP_CAPTURE" || operation === "SAVE_CAPTURE")
+      ) {
+        return senderHost === "www.r-agent.com" && payloadHost === "www.r-agent.com";
+      }
+      const expectedHost =
+        payload.sourceSite === "GREEN"
+          ? "green-japan.com"
+          : payload.sourceSite === "DODA"
+            ? "doda.jp"
+            : "r-agent.com";
+      return isHost(senderHost, expectedHost) && isHost(payloadHost, expectedHost);
     } catch {
       return false;
     }

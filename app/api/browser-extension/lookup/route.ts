@@ -10,7 +10,7 @@ import {
   browserExtensionLookupSchema,
   buildBrowserExtensionSourceKey,
   normalizeCapturedUrl,
-  validateSourceHost
+  validateCaptureSourceHost
 } from "@/features/browser-extension/contracts";
 import { prisma } from "@/lib/prisma";
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       await readBrowserExtensionJson(request)
     );
 
-    if (!parsed.success || !validateSourceHost(parsed.data.sourceSite, parsed.data.sourceUrl)) {
+    if (!parsed.success || !validateCaptureSourceHost(parsed.data.sourceSite, parsed.data.sourceUrl)) {
       return browserExtensionJson(
         { ok: false, code: "INVALID_INPUT", message: "求人ページ情報が不正です" },
         { status: 400 }

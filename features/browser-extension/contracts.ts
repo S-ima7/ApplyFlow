@@ -4,7 +4,7 @@ import { applicationTypeValues, stageTypeValues } from "@/features/applications/
 import { extractedConfirmedSlotSchema, extractedSlotSchema } from "@/features/email-import/schema";
 import { normalizeSourceUrl } from "@/lib/source-url";
 
-export const browserExtensionSourceSites = ["GREEN", "DODA"] as const;
+export const browserExtensionSourceSites = ["GREEN", "DODA", "RECRUIT_AGENT"] as const;
 export const browserMessageEventTypes = ["CREATE_OR_UPDATE", "RESCHEDULE", "CANCEL"] as const;
 
 const optionalCapturedText = (max: number) =>
@@ -117,7 +117,19 @@ export function validateSourceHost(sourceSite: BrowserExtensionLookupInput["sour
     return hostname === "green-japan.com" || hostname.endsWith(".green-japan.com");
   }
 
-  return hostname === "doda.jp" || hostname.endsWith(".doda.jp");
+  if (sourceSite === "DODA") {
+    return hostname === "doda.jp" || hostname.endsWith(".doda.jp");
+  }
+
+  return hostname === "r-agent.com" || hostname.endsWith(".r-agent.com");
+}
+
+export function validateCaptureSourceHost(
+  sourceSite: BrowserExtensionLookupInput["sourceSite"],
+  value: string
+) {
+  if (sourceSite !== "RECRUIT_AGENT") return validateSourceHost(sourceSite, value);
+  return new URL(value).hostname.toLowerCase() === "www.r-agent.com";
 }
 
 export function buildBrowserExtensionSourceKey(input: BrowserExtensionLookupInput) {

@@ -69,6 +69,31 @@ describe("browser extension extraction adapters", () => {
     expect(result?.position.value).toBe("Backend Engineer");
   });
 
+  it("extracts a Recruit Agent public job and uses its URL slug as the job ID", () => {
+    document.body.innerHTML = `
+      <p class="company-name">サンプル株式会社</p>
+      <h1>プロダクトエンジニア</h1>
+      <p class="job-location">東京都 港区</p>
+      <p class="employment-type">正社員</p>
+      <p class="salary">想定年収600万円～800万円</p>`;
+
+    const result = extraction?.extract(
+      document,
+      new URL("https://www.r-agent.com/viewjob/jkba8aa617cbdbc525/?utm_source=mail")
+    );
+
+    expect(result).toMatchObject({
+      sourceSite: "RECRUIT_AGENT",
+      sourceJobId: "jkba8aa617cbdbc525",
+      sourceUrl: "https://www.r-agent.com/viewjob/jkba8aa617cbdbc525",
+      companyName: { value: "サンプル株式会社", source: "visible_dom" },
+      position: { value: "プロダクトエンジニア", source: "visible_dom" },
+      locationText: { value: "東京都 港区", source: "visible_dom" },
+      employmentTypeText: { value: "正社員", source: "visible_dom" },
+      compensationText: { value: "想定年収600万円～800万円", source: "visible_dom" }
+    });
+  });
+
   it("does not activate on a Green listing page", () => {
     document.body.innerHTML = "<h1>求人一覧</h1>";
     expect(
@@ -76,7 +101,7 @@ describe("browser extension extraction adapters", () => {
     ).toBeNull();
   });
 
-  it("recognizes the reported Green and doda production URL formats", () => {
+  it("recognizes the reported Green, doda, and Recruit Agent production URL formats", () => {
     document.body.innerHTML = "<h1>求人タイトル</h1>";
 
     expect(
@@ -93,5 +118,22 @@ describe("browser extension extraction adapters", () => {
         )
       )
     ).toBe("DODA");
+    expect(
+      extraction?.detectPage(
+        document,
+        new URL("https://www.r-agent.com/viewjob/jkba8aa617cbdbc525/")
+      )
+    ).toBe("RECRUIT_AGENT");
+  });
+
+  it("does not treat Recruit Agent non-job pages as public job details", () => {
+    document.body.innerHTML = "<h1>Personal Desktop</h1>";
+    expect(
+      extraction?.detectPage(document, new URL("https://pdt.r-agent.com/pdt/app/messages"))
+    ).toBeNull();
+    document.body.innerHTML = "<h1>非公開サブドメインの求人候補</h1>";
+    expect(
+      extraction?.detectPage(document, new URL("https://pdt.r-agent.com/viewjob/job-1/"))
+    ).toBeNull();
   });
 });

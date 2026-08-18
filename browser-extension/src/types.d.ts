@@ -1,4 +1,4 @@
-type ApplyFlowSourceSite = "GREEN" | "DODA";
+type ApplyFlowSourceSite = "GREEN" | "DODA" | "RECRUIT_AGENT";
 type ApplyFlowConfidence = "high" | "medium" | "low" | "missing";
 type ApplyFlowFieldSource = "json_ld" | "visible_dom" | "meta" | "url";
 
