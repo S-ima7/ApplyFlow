@@ -70,7 +70,7 @@
 ## Risks and human review
 
 - Windows環境では実機Safariのホーム画面追加UIとノッチ描画を完全再現できないため、最終的な実機インストール確認は人間が行う。
-- OAuthの本番redirect URIとHTTPS配信は既存デプロイ設定に依存する。PWAはHTTPS（localhostを除く）が必要。
+- OAuthの本番redirect URIとHTTPS配信は既存デプロイ設定に依存する。PWAの配布は本番HTTPSを必須とする。
 - iOSのバージョン差は機種だけでは固定できない。対象機種ではサポート中の最新iOS Safariを前提とする。
 
 ## Open questions

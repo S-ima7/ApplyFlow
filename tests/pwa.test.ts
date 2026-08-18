@@ -68,4 +68,24 @@ describe("iPhone PWA contract", () => {
     expect(sidebar).toContain("flex min-h-11 items-center");
     expect(globalStyles).toMatch(/\.fc \.fc-button \{\s+min-height: 2\.75rem;/);
   });
+
+  it("keeps the PC sidebar and mobile bottom navigation in the shared app shell", () => {
+    const dashboardLayout = readFileSync(
+      join(process.cwd(), "app", "(dashboard)", "layout.tsx"),
+      "utf8"
+    );
+    const sidebar = readFileSync(
+      join(process.cwd(), "components", "layout", "sidebar.tsx"),
+      "utf8"
+    );
+    const mobileNav = readFileSync(
+      join(process.cwd(), "components", "layout", "mobile-nav.tsx"),
+      "utf8"
+    );
+
+    expect(dashboardLayout).toContain("<Sidebar />");
+    expect(dashboardLayout).toContain("<MobileNav />");
+    expect(sidebar).toContain("md:block");
+    expect(mobileNav).toContain("md:hidden");
+  });
 });

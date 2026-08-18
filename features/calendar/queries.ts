@@ -4,9 +4,13 @@ import {
   ProposedSlotStatus,
   ScheduleEventSource
 } from "@prisma/client";
-import { getGoogleCalendarImportKey } from "@/features/calendar/import";
+import {
+  getGoogleCalendarImportKey,
+  isApplyFlowInterviewCalendarEvent
+} from "@/features/calendar/import";
 import {
   getGoogleCalendarEvents,
+  getGoogleCalendarInterviewEventId,
   type GoogleCalendarConnection
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
@@ -129,6 +133,11 @@ export async function getCalendarData(userId: string): Promise<CalendarData> {
         )
       )
   );
+  const exportedInterviewKeys = new Set(
+    interviews.map((interview) =>
+      getGoogleCalendarInterviewEventId(userId, interview.id)
+    )
+  );
 
   const events: CalendarEvent[] = [
     ...interviews
@@ -220,7 +229,8 @@ export async function getCalendarData(userId: string): Promise<CalendarData> {
         (event) =>
           !importedGoogleKeys.has(
             getGoogleCalendarImportKey(event.calendarId, event.externalEventId)
-          )
+          ) &&
+          !isApplyFlowInterviewCalendarEvent(event, exportedInterviewKeys)
       )
       .map((event) => ({
         id: event.id,

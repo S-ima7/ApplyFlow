@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  GOOGLE_CALENDAR_EVENTS_OWNED_SCOPE,
   GOOGLE_CALENDAR_READONLY_SCOPE,
+  buildGoogleCalendarInterviewEvent,
   buildGoogleCalendarEventUrl,
   buildGoogleCalendarEventsUrl,
   getGoogleCalendarApiErrorMessage,
+  getDefaultGoogleCalendarRange,
+  getGoogleCalendarInterviewEventId,
+  hasGoogleCalendarEventsOwnedScope,
   hasGoogleCalendarReadonlyScope,
   mapGoogleCalendarEvent,
   mapGoogleCalendarEvents
@@ -62,6 +67,75 @@ describe("hasGoogleCalendarReadonlyScope", () => {
   });
 });
 
+describe("getDefaultGoogleCalendarRange", () => {
+  it("uses the user's calendar month at the server timezone boundary", () => {
+    const range = getDefaultGoogleCalendarRange(
+      new Date("2026-08-31T15:30:00.000Z"),
+      "Asia/Tokyo"
+    );
+
+    expect(range).toEqual({
+      timeMin: new Date("2026-08-31T15:00:00.000Z"),
+      timeMax: new Date("2026-10-31T15:00:00.000Z")
+    });
+  });
+});
+
+describe("Google Calendar interview export data", () => {
+  it("detects the owned-events write scope", () => {
+    expect(
+      hasGoogleCalendarEventsOwnedScope(
+        `openid ${GOOGLE_CALENDAR_READONLY_SCOPE} ${GOOGLE_CALENDAR_EVENTS_OWNED_SCOPE}`
+      )
+    ).toBe(true);
+    expect(hasGoogleCalendarEventsOwnedScope(GOOGLE_CALENDAR_READONLY_SCOPE)).toBe(
+      false
+    );
+  });
+
+  it("builds a deterministic Google-compatible event id per owner and interview", () => {
+    const eventId = getGoogleCalendarInterviewEventId("user-1", "interview-1");
+
+    expect(eventId).toMatch(/^[a-f0-9]{64}$/);
+    expect(getGoogleCalendarInterviewEventId("user-1", "interview-1")).toBe(
+      eventId
+    );
+    expect(getGoogleCalendarInterviewEventId("user-2", "interview-1")).not.toBe(
+      eventId
+    );
+  });
+
+  it("maps DB-owned interview details to an events.insert body", () => {
+    const event = buildGoogleCalendarInterviewEvent("user-1", {
+      interviewId: "interview-1",
+      companyName: "Example株式会社",
+      position: "Frontend Engineer",
+      title: "最終面接",
+      location: "東京本社",
+      meetingUrl: "https://meet.google.com/abc-defg-hij",
+      note: "採用責任者との面談",
+      startAt: new Date("2026-08-20T01:00:00.000Z"),
+      endAt: new Date("2026-08-20T02:00:00.000Z")
+    });
+
+    expect(event).toMatchObject({
+      summary: "Example株式会社｜最終面接",
+      location: "東京本社",
+      start: { dateTime: "2026-08-20T01:00:00.000Z" },
+      end: { dateTime: "2026-08-20T02:00:00.000Z" },
+      extendedProperties: {
+        private: { applyFlowInterviewKey: event.id }
+      }
+    });
+    expect(event.description).toContain("会社: Example株式会社");
+    expect(event.description).toContain("ポジション: Frontend Engineer");
+    expect(event.description).toContain(
+      "面談URL: https://meet.google.com/abc-defg-hij"
+    );
+    expect(event.description).toContain("説明: 採用責任者との面談");
+  });
+});
+
 describe("mapGoogleCalendarEvent", () => {
   it("maps a timed Google Calendar event", () => {
     const event = mapGoogleCalendarEvent({
@@ -110,6 +184,19 @@ describe("mapGoogleCalendarEvent", () => {
       timezone: "Asia/Tokyo"
     });
     expect(event?.updatedAt?.toISOString()).toBe("2026-07-12T01:00:00.000Z");
+  });
+
+  it("keeps the private ApplyFlow interview marker", () => {
+    const event = mapGoogleCalendarEvent({
+      id: "event-exported",
+      extendedProperties: {
+        private: { applyFlowInterviewKey: "interview-key" }
+      },
+      start: { dateTime: "2026-07-12T10:00:00+09:00" },
+      end: { dateTime: "2026-07-12T11:00:00+09:00" }
+    });
+
+    expect(event?.applyFlowInterviewKey).toBe("interview-key");
   });
 
   it("maps an all-day Google Calendar event", () => {
@@ -196,5 +283,12 @@ describe("Google Calendar import data", () => {
       externalEventId: "event-1",
       title: "面接"
     });
+    expect(data.description).toBeNull();
+    expect(data.location).toBeNull();
+    expect(data.meetingUrl).toBeNull();
+    expect(data.startDate).toBeNull();
+    expect(data.endDate).toBeNull();
+    expect(data.externalUrl).toBe("https://calendar.google.com/event");
+    expect(data.sourceUpdatedAt).toBeNull();
   });
 });

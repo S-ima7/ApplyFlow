@@ -81,7 +81,7 @@ export default async function SettingsPage() {
                 </Badge>
               </div>
               <p>
-                Primary calendarの予定を読み取り、ApplyFlowのカレンダー表示と衝突検知に利用します。
+                Primary calendarの予定を読み取り、確定面談は利用者の操作時だけ登録します。
               </p>
               {googleCalendar.message ? (
                 <p className="text-amber-700">{googleCalendar.message}</p>

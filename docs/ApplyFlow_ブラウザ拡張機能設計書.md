@@ -1,6 +1,7 @@
 # ApplyFlow ブラウザ拡張機能設計書 v3.0
 
 更新日: 2026-08-18
+
 対象実装: ApplyFlow v0.1.0 / Chrome拡張 v0.3.0 / Manifest V3
 ステータス: MVP実装済み
 
@@ -16,7 +17,7 @@ ApplyFlow本体の目的である「応募先、選考フェーズ、面談候�
 
 - 利用者は本人1名である。
 - Chrome Web Storeでは配布せず、ソースからビルドして開発者モードで読み込む。
-- ApplyFlowはNetlify / Neon上の本人管理下のHTTPS環境で稼働する。
+- ApplyFlowはNetlifyで公開した本人管理下のHTTPS環境で稼働する。
 - Green、doda、リクルートエージェントおよび各運営会社とは無関係の非公式ツールである。
 - ソースコードは公開可能だが、トークン、実求人データ、Cookie、DBダンプは公開しない。
 
@@ -131,7 +132,7 @@ flowchart LR
 | `extraction.ts` | 媒体判定、JSON-LD/可視DOM抽出、URL正規化 |
 | `content.ts` | ボタン、確認ドロワー、編集、キーボード操作、メッセージ送信 |
 | `background.ts` | Token隔離、権限に応じたContent Script登録、送信元検証、API通信 |
-| `options.ts` | ApplyFlow URL、Token、応募種別、媒体権限、ローカル削除 |
+| `options.ts` | ApplyFlow HTTPS URL、Token、応募種別、媒体権限、拡張機能設定削除 |
 | `popup.ts` | 設定画面への入口 |
 | Extension API | Token認証、入力検証、重複判定、トランザクション保存 |
 | ApplyFlow設定画面 | Token発行、最終利用確認、失効 |
@@ -182,14 +183,14 @@ features/browser-extension/
 
 ### 7.2 任意ホスト権限
 
-`manifest.json`は動的な自己ホスト先に対応するため、`https://*/*`だけを任意権限として宣言する。実際の要求は設定保存時に次の具体的originへ限定する。
+`manifest.json`は動的な本番ホスト先に対応するため、`https://*/*`だけを任意権限として宣言する。実際の要求は設定保存時に次の具体的originへ限定する。
 
 - `https://*.green-japan.com/*`
 - `https://*.doda.jp/*`
 - `https://*.r-agent.com/*`
 - 入力されたApplyFlowのorigin
 
-ApplyFlow接続先はHTTPSのみ許可する。旧版のChrome storageにHTTP URLが残っていても未設定として扱い、Bearer Tokenを送信しない。`cookies`、`history`、`tabs`、`webRequest`権限は要求しない。`activeTab`はユーザーが拡張アイコンを開いた現在タブにだけ一時アクセスする。
+ApplyFlow接続先はHTTPSのみ許可し、平文HTTPは設定保存前とAPI呼び出し前に拒否する。旧版のChrome storageにHTTP URLが残っていても未設定として扱い、Bearer Tokenを送信しない。`cookies`、`history`、`tabs`、`webRequest`権限は要求しない。`activeTab`はユーザーが拡張アイコンを開いた現在タブにだけ一時アクセスする。
 
 Chrome公式仕様に従い、`chrome.permissions.request()`は設定保存というユーザージェスチャー内で実行する。許可済み媒体だけ`chrome.scripting.registerContentScripts()`で永続登録する。最低Chromeバージョンは、Storage access levelを利用できる102とする。
 
@@ -422,7 +423,7 @@ unique制約は`(userId, idempotencyKey)`と`(userId, applicationId, messageDige
 - サーバーはクライアントの正規化値や重複キーを信用せず再計算する。
 - ユーザー所有データは必ず認証Tokenの`userId`で絞り込む。
 - HTML文字列を求人値から組み立てず、フォームの`.value`または`textContent`へ設定する。
-- 外部環境への平文HTTPを拒否する。
+- ApplyFlow接続先への平文HTTPを拒否する。
 - CSPは`script-src 'self'; object-src 'none'`とし、remote codeを使用しない。
 - ログにToken、求人本文、Cookieを出力しない。
 - メッセージ本文は明示同意後の抽出要求にだけ含め、永続化・ログ出力しない。
@@ -480,9 +481,9 @@ npm run build
 
 ## 16. 導入・運用
 
-1. Netlify / Neonの本番環境変数とDB migration適用状態を確認する。
-2. PC版ChromeでApplyFlowの本番HTTPS URLへログインする。
-3. `npm run extension:build`を実行する。
+1. Netlify / Neonデプロイ手順に従い、環境変数設定とDB migrationを完了する。
+2. Netlifyの本番HTTPS URLへPC版Chromeでアクセスし、ApplyFlowへログインする。
+3. `npm install`後に`npm run extension:build`を実行する。
 4. `chrome://extensions`のデベロッパーモードで`browser-extension/dist`を読み込む。
 5. ApplyFlowへGoogleログインし、`/settings`で拡張Tokenを発行する。
 6. 対象媒体ページで拡張アイコンを開き、「このページで有効化」を押してChromeの権限を許可する。
@@ -559,4 +560,5 @@ npm run build
 | 2.3 | 2026-07-15 | メッセージから応募先も抽出し、完全一致の自動統合、表記ゆれ確認、未登録応募先の同時作成を追加 |
 | 2.4 | 2026-07-15 | 変更・取消の対象となる進行中面接がない場合、選択不能な必須欄を出さず新規登録へ自動補正するUXを追加 |
 | 2.5 | 2026-07-15 | メッセージ送信欄を避ける起動ボタン配置と、入力・抽出結果を保持したパネルの一時退避・再開を追加 |
-| 3.0 | 2026-08-18 | ApplyFlow接続先を本番HTTPSへ限定し、リクルートエージェントの公開求人とPersonal Desktopを対象へ追加 |
+| 2.6 | 2026-08-17 | 実行環境を本番HTTPSに限定し、平文HTTP接続と開発用ホスト権限を削除 |
+| 3.0 | 2026-08-18 | リクルートエージェントの公開求人とPersonal Desktopを対象へ追加し、旧HTTP設定の無効化を明文化 |

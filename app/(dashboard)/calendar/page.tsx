@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarClient } from "@/features/calendar/components/calendar-client";
+import { GoogleCalendarBulkImportButton } from "@/features/calendar/components/google-calendar-bulk-import-button";
 import { getCalendarData } from "@/features/calendar/queries";
 import { getConflictAlertsForUser } from "@/features/conflict-detection/queries";
 import { requireUser } from "@/lib/auth-guard";
@@ -16,11 +17,16 @@ export default async function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-950">カレンダー</h2>
-        <p className="text-sm text-slate-500">
-          選考予定とGoogle Calendarを重ねて確認し、必要な予定を取り込めます。
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-950">カレンダー</h2>
+          <p className="text-sm text-slate-500">
+            選考予定とGoogle Calendarを重ねて確認し、必要な予定を取り込めます。
+          </p>
+        </div>
+        {calendarData.googleCalendar.status === "connected" ? (
+          <GoogleCalendarBulkImportButton />
+        ) : null}
       </div>
       {calendarData.googleCalendar.status !== "connected" ? (
         <Card className="border-amber-200 bg-amber-50">

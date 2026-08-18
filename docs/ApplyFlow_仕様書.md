@@ -1,4 +1,4 @@
-# ApplyFlow 仕様書 v1.5
+# ApplyFlow 仕様書 v1.7
 
 更新日: 2026-08-18
 
@@ -15,7 +15,8 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - ダッシュボード、応募先一覧・詳細、カレンダー、返信待ち、期限管理
 - アプリ内予定の衝突検知
 - Google Calendar readonly連携、予定表示、衝突検知
-- Google Calendar予定のアプリ内予定への取り込み
+- Google Calendar予定のアプリ内予定への個別・一括取り込み
+- 確定面談のGoogle Primary Calendarへの明示登録
 - Gmail readonly連携、検索、ページング、本文取得
 - Cloudflare Workers AI上の`@cf/openai/gpt-oss-120b`によるメール情報抽出
 - Gmail抽出はreasoning medium、ブラウザ拡張の個別抽出はreasoning highを使用する。
@@ -45,7 +46,23 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 
 同じ`userId / source / externalCalendarId / externalEventId`の組み合わせはupsertし、重複登録しない。取り込み後はAPI由来の同じ予定を表示対象から除外する。
 
-取り込みはApplyFlow側へのスナップショット保存であり、Google Calendarの作成・更新・削除は行わない。
+取り込みはApplyFlow側へのスナップショット保存であり、この操作自体はGoogle Calendarの作成・更新・削除を行わない。
+
+カレンダー画面の「Google予定を一括取り込み」は、利用者のタイムゾーンにおける今月初日から翌月末までの予定を1トランザクションでupsertする。新規予定は応募先未紐付けで作成し、既存予定の更新では利用者が設定済みの応募先紐付けを保持する。Google側で削除された任意項目はApplyFlow側でも消去し、削除済みの同じ予定は明示的な再取り込みとして復活させる。ApplyFlowからGoogleへ登録した確定面接は一括取り込み対象から除外する。
+
+### 3.3 確定面談のGoogle Calendar登録
+
+1. 応募詳細で日時が正しい確定面談を表示する。
+2. 利用者が「Google Calendarに登録」を実行する。
+3. Server Actionがログイン利用者と面談の所有権、`CONFIRMED`状態、開始・終了日時をDBから再検証する。
+4. Primary Calendarへ`events.insert`を実行する。
+5. 成功、登録済み、権限不足、API失敗を面談カード内へ表示する。
+
+イベントのタイトルには会社名と面談名、説明には会社名・ポジション・面談URL・面談メモ、場所には面談場所、開始・終了には確定日時を設定する。クライアントからタイトルや日時を受け取らない。
+
+イベントIDは`userId / Interview.id`からSHA-256で決定的に生成する。`events.insert`が409を返した場合は同じIDを`events.get`し、ApplyFlowのprivate markerが一致するイベントだけを登録済みとして扱う。通知は`sendUpdates=none`で送らない。
+
+要求scopeは既存のCalendar readonlyを維持し、所有カレンダー上の予定に限定した`calendar.events.owned`を追加する。既存利用者にscopeがない場合は設定画面からの再ログインを案内する。
 
 ## 4. Gmail・AI抽出
 
@@ -141,7 +158,7 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - すべての業務データを`userId`で分離する。
 - Calendar取込時はクライアントから送られた予定本文を信用せず、サーバーで再取得する。
 - 応募先紐付け時は所有者を検証する。
-- Google連携はCalendar/Gmailともreadonlyスコープとする。
+- Google連携はCalendarの読み取り、所有カレンダーへの確定面談登録、Gmailの読み取りに必要な最小scopeだけを要求する。
 - Gmail本文はDBへ保存しない。
 - APIキーとOAuthトークンはクライアントへ公開しない。
 - Gmail本文は処理中のメモリからCloudflare Workers AI上の`@cf/openai/gpt-oss-120b`へ送信する。Cloudflareの保存サービス、DB、ログへ保存しない。
@@ -170,6 +187,8 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 ## 8. 完了条件
 
 - 同じGoogle予定を複数回取り込んでも1レコードになる。
+- 一括取り込みは新規件数と更新件数を表示し、取得・保存失敗を画面へ表示する。保存失敗時は全件をロールバックし、保存後のキャッシュ更新だけが失敗した場合は保存成功として扱う。
+- 同じ確定面談を複数回Google Calendarへ登録しても1予定になり、409後の既存確認は登録済み成功になる。
 - 取り込んだ予定は再読込後も表示され、Google予定と二重表示されない。
 - 終日予定とタイムゾーン付き予定が正しい日付・時刻で表示される。
 - Gmailのplain/HTML/引用付きメールを処理できる。
@@ -184,8 +203,9 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 
 ## 9. 対象外
 
-- Google Calendarへの予定書き込み
 - Google Calendarとの常時双方向同期
+- Google Calendarへの候補日時・期限・取込済みScheduleEventの登録
+- Google Calendar予定の自動登録、更新・削除同期、登録先カレンダー選択
 - Gmail監視の稼働SLA保証
 - 過去メールの一括自動登録
 - Gmail監視によるCompany / Applicationの新規自動作成
@@ -200,4 +220,6 @@ ApplyFlowは、応募先ごとに分散する選考状況、候補日時、確�
 - v1.2で、本人操作・確認を前提としたGreen・doda Chrome拡張機能を実装済みスコープへ追加した。
 - v1.3で、企業メッセージから面接の確定・候補・変更・取消を確認登録する機能を追加した。
 - v1.4で、Gmailの15分間隔監視、高信頼な既存応募への限定自動反映、Cloudflare Workers AI上の`@cf/openai/gpt-oss-120b`、Netlify / Neon無料デプロイ構成を追加した。
-- v1.5で、Chrome拡張機能を本番HTTPS接続へ限定し、リクルートエージェントの公開求人とPersonal Desktopを対象媒体へ追加した。
+- v1.5で、確定面談を利用者の明示操作でGoogle Primary Calendarへ重複なく登録する機能を追加した。
+- v1.6で、標準取得範囲のGoogle予定を既存紐付けを保ったまま一括取り込みする機能を追加した。
+- v1.7で、Chrome拡張機能へリクルートエージェントの公開求人とPersonal Desktopを対象媒体として追加した。
