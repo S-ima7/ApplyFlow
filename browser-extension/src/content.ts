@@ -246,6 +246,7 @@
     previouslyFocused = trigger;
     trigger.setAttribute("aria-expanded", "true");
     if (overlay.dataset.suspended === "true") {
+      lastSelectedText = "";
       overlay.hidden = false;
       delete overlay.dataset.suspended;
       trigger.textContent = trigger.dataset.expandedLabel || "面接日時を抽出";
@@ -259,7 +260,8 @@
       return;
     }
     currentMessage = null;
-    const selectedText = lastSelectedText || readCurrentSelection();
+    const selectedText = readCurrentSelection() || lastSelectedText;
+    lastSelectedText = "";
     setInputValue(overlay, "#af-selected-message", selectedText);
     setText(overlay, "#af-source", `${sourceLabel(site)} / 選択範囲のみを処理します`);
     setMessage(
@@ -320,11 +322,13 @@
       lastSelectedText = readCurrentSelection();
     });
     useSelectionButton?.addEventListener("click", () => {
-      if (!lastSelectedText) {
+      const selectedText = readCurrentSelection() || lastSelectedText;
+      lastSelectedText = "";
+      if (!selectedText) {
         setMessage(overlay, "左側の企業メッセージを選択してから、もう一度押してください。", "error");
         return;
       }
-      setInputValue(overlay, "#af-selected-message", lastSelectedText);
+      setInputValue(overlay, "#af-selected-message", selectedText);
       setMessage(overlay, "現在選択しているメッセージを取り込みました。", "success");
     });
   }

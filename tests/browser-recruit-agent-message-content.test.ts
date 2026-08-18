@@ -76,7 +76,8 @@ describe("Recruit Agent message page startup", () => {
     const overlay = shadow?.querySelector<HTMLElement>(".af-overlay");
     const textarea = shadow?.querySelector<HTMLTextAreaElement>("#af-selected-message");
     const useSelectionButton = shadow?.querySelector<HTMLButtonElement>("#af-use-selection");
-    expect(root && shadow && trigger && overlay && textarea && useSelectionButton).toBeTruthy();
+    const suspendButton = shadow?.querySelector<HTMLButtonElement>(".af-close-drawer");
+    expect(root && shadow && trigger && overlay && textarea && useSelectionButton && suspendButton).toBeTruthy();
 
     trigger?.click();
     if (textarea) textarea.value = "入力済みの本文";
@@ -102,9 +103,12 @@ describe("Recruit Agent message page startup", () => {
     expect(textarea?.value).toBe("面接候補日は2026年8月24日18時です。確認をお願いします。");
 
     const topSelection = vi.spyOn(window, "getSelection").mockReturnValue({
-      toString: () => "トップ画面で選択した本文"
+      toString: () => "以前に選択した本文"
     } as Selection);
     useSelectionButton?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    topSelection.mockReturnValue({
+      toString: () => "トップ画面で選択した本文"
+    } as Selection);
     useSelectionButton?.click();
     expect(textarea?.value).toBe("トップ画面で選択した本文");
     topSelection.mockRestore();
@@ -113,7 +117,14 @@ describe("Recruit Agent message page startup", () => {
       throw new DOMException("Blocked", "SecurityError");
     });
     if (textarea) textarea.value = "手入力した本文を保持";
-    useSelectionButton?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    suspendButton?.click();
+    const resumeSelection = vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "パネル再開時に選択していた本文"
+    } as Selection);
+    trigger?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    trigger?.click();
+    resumeSelection.mockRestore();
+    expect(overlay?.hidden).toBe(false);
     useSelectionButton?.click();
     expect(textarea?.value).toBe("手入力した本文を保持");
 
