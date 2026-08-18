@@ -83,58 +83,91 @@ describe("Recruit Agent message page startup", () => {
     if (textarea) textarea.value = "入力済みの本文";
     expect(overlay?.hidden).toBe(false);
 
+    const modalWrapper = document.createElement("div");
     const modal = document.createElement("section");
     modal.setAttribute("role", "dialog");
     modal.setAttribute("aria-modal", "true");
+    const staleFrame = document.createElement("iframe");
     const frame = document.createElement("iframe");
-    modal.append(frame);
-    document.body.append(modal);
-    const frameSelection = vi.spyOn(frame.contentWindow!, "getSelection").mockReturnValue({
+    modal.append(staleFrame, frame);
+    modalWrapper.append(modal);
+    document.body.append(modalWrapper);
+    vi.spyOn(staleFrame.contentWindow!, "getSelection").mockReturnValue({
+      toString: () => "別のiframeに残った古い選択"
+    } as Selection);
+    vi.spyOn(frame.contentWindow!, "getSelection").mockReturnValue({
       toString: () => "面接候補日は2026年8月24日18時です。確認をお願いします。"
     } as Selection);
 
     await flushUiPlacement();
+    staleFrame.contentDocument?.dispatchEvent(new Event("selectionchange"));
+    frame.contentDocument?.dispatchEvent(new Event("selectionchange"));
     expect(root?.parentElement).toBe(modal);
     expect(overlay?.hidden).toBe(false);
     expect(textarea?.value).toBe("入力済みの本文");
 
+    frame.focus();
     useSelectionButton?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    useSelectionButton?.focus();
+    useSelectionButton?.click();
+    expect(textarea?.value).toBe("面接候補日は2026年8月24日18時です。確認をお願いします。");
+
+    if (textarea) textarea.value = "キーボード操作前の本文";
+    frame.contentDocument?.dispatchEvent(new Event("selectionchange"));
+    frame.focus();
+    useSelectionButton?.focus();
     useSelectionButton?.click();
     expect(textarea?.value).toBe("面接候補日は2026年8月24日18時です。確認をお願いします。");
 
     const topSelection = vi.spyOn(window, "getSelection").mockReturnValue({
       toString: () => "以前に選択した本文"
     } as Selection);
+    document.dispatchEvent(new Event("selectionchange"));
     useSelectionButton?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
     topSelection.mockReturnValue({
       toString: () => "トップ画面で選択した本文"
     } as Selection);
+    document.dispatchEvent(new Event("selectionchange"));
     useSelectionButton?.click();
     expect(textarea?.value).toBe("トップ画面で選択した本文");
-    topSelection.mockRestore();
 
-    frameSelection.mockImplementation(() => {
+    const blockedFrame = document.createElement("iframe");
+    modal.append(blockedFrame);
+    vi.spyOn(blockedFrame.contentWindow!, "getSelection").mockImplementation(() => {
       throw new DOMException("Blocked", "SecurityError");
     });
     if (textarea) textarea.value = "手入力した本文を保持";
-    suspendButton?.click();
-    const resumeSelection = vi.spyOn(window, "getSelection").mockReturnValue({
-      toString: () => "パネル再開時に選択していた本文"
-    } as Selection);
-    trigger?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
-    trigger?.click();
-    resumeSelection.mockRestore();
-    expect(overlay?.hidden).toBe(false);
+    topSelection.mockReturnValue({ toString: () => "" } as Selection);
+    blockedFrame.focus();
+    blockedFrame.contentDocument?.dispatchEvent(new Event("selectionchange"));
+    useSelectionButton?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    useSelectionButton?.focus();
     useSelectionButton?.click();
     expect(textarea?.value).toBe("手入力した本文を保持");
 
-    modal.style.display = "none";
+    topSelection.mockReturnValue({
+      toString: () => "パネル再開前に選択していた本文"
+    } as Selection);
+    document.dispatchEvent(new Event("selectionchange"));
+    frame.focus();
+    suspendButton?.click();
+    trigger?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    trigger?.focus();
+    trigger?.click();
+    expect(overlay?.hidden).toBe(false);
+    useSelectionButton?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    useSelectionButton?.focus();
+    useSelectionButton?.click();
+    expect(textarea?.value).toBe("手入力した本文を保持");
+    topSelection.mockRestore();
+
+    modalWrapper.style.display = "none";
     await flushPeriodicPlacement();
     expect(root?.parentElement).toBe(document.documentElement);
     expect(overlay?.hidden).toBe(false);
     expect(textarea?.value).toBe("手入力した本文を保持");
 
-    modal.remove();
+    modalWrapper.remove();
     await flushUiPlacement();
   });
 
