@@ -144,7 +144,10 @@
     }
 
     if (message.type === "LOOKUP_CAPTURE" || message.type === "SAVE_CAPTURE") {
-      if (!isRecord(message.payload) || !isTrustedCaptureSender(sender, message.payload)) {
+      if (
+        !isRecord(message.payload) ||
+        !isTrustedCaptureSender(message.type, sender, message.payload)
+      ) {
         return { ok: false, code: "UNTRUSTED_SENDER", message: "許可されていないページです" };
       }
       if (!settings.apiToken) {
@@ -167,7 +170,10 @@
     }
 
     if (message.type === "EXTRACT_MESSAGE" || message.type === "REGISTER_MESSAGE_EVENT") {
-      if (!isRecord(message.payload) || !isTrustedCaptureSender(sender, message.payload)) {
+      if (
+        !isRecord(message.payload) ||
+        !isTrustedCaptureSender(message.type, sender, message.payload)
+      ) {
         return { ok: false, code: "UNTRUSTED_SENDER", message: "許可されていないページです" };
       }
       if (!settings.apiToken) {
@@ -229,6 +235,7 @@
   }
 
   function isTrustedCaptureSender(
+    operation: "LOOKUP_CAPTURE" | "SAVE_CAPTURE" | "EXTRACT_MESSAGE" | "REGISTER_MESSAGE_EVENT",
     sender: ApplyFlowChromeMessageSender,
     payload: Record<string, unknown>
   ) {
@@ -247,6 +254,12 @@
       const senderHost = new URL(senderUrl).hostname.toLowerCase();
       const payloadUrl = new URL(payload.sourceUrl);
       const payloadHost = payloadUrl.hostname.toLowerCase();
+      if (
+        payload.sourceSite === "RECRUIT_AGENT" &&
+        (operation === "LOOKUP_CAPTURE" || operation === "SAVE_CAPTURE")
+      ) {
+        return senderHost === "www.r-agent.com" && payloadHost === "www.r-agent.com";
+      }
       const expectedHost =
         payload.sourceSite === "GREEN"
           ? "green-japan.com"

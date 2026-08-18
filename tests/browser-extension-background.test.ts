@@ -1,22 +1,25 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type MessageListener = (
+  message: unknown,
+  sender: ApplyFlowChromeMessageSender,
+  sendResponse: (response: unknown) => void
+) => boolean | void;
 
 describe("browser extension service worker connection boundary", () => {
-  afterEach(() => {
-    Reflect.deleteProperty(globalThis, "chrome");
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    vi.resetModules();
-  });
+  let fetchApi: ReturnType<typeof vi.fn>;
+  let handleMessage: MessageListener | undefined;
+  let settings: ApplyFlowExtensionSettings;
 
-  it("does not send a Bearer request when legacy HTTP settings remain in storage", async () => {
-    let handleMessage:
-      | ((
-          message: unknown,
-          sender: ApplyFlowChromeMessageSender,
-          sendResponse: (response: unknown) => void
-        ) => boolean | void)
-      | undefined;
-    const fetchApi = vi.fn();
+  beforeEach(async () => {
+    handleMessage = undefined;
+    settings = {
+      apiBaseUrl: "https://applyflow.example.com",
+      apiToken: "af_ext_test-token",
+      defaultApplicationType: "CAREER_CHANGE",
+      adapters: { GREEN: false, DODA: false, RECRUIT_AGENT: false }
+    };
+    fetchApi = vi.fn(async () => ({ json: async () => ({ ok: true }) }));
     vi.stubGlobal("fetch", fetchApi);
 
     const target = globalThis as typeof globalThis & { chrome?: typeof chrome };
@@ -34,14 +37,7 @@ describe("browser extension service worker connection boundary", () => {
       },
       storage: {
         local: {
-          get: vi.fn(async () => ({
-            settings: {
-              apiBaseUrl: "http://legacy.invalid",
-              apiToken: "af_ext_test-token",
-              defaultApplicationType: "CAREER_CHANGE",
-              adapters: { GREEN: false, DODA: false, RECRUIT_AGENT: false }
-            }
-          })),
+          get: vi.fn(async () => ({ settings })),
           set: vi.fn(async () => undefined),
           remove: vi.fn(async () => undefined),
           setAccessLevel: vi.fn(async () => undefined)
@@ -68,20 +64,28 @@ describe("browser extension service worker connection boundary", () => {
     // @ts-expect-error Extension service workers intentionally compile as classic scripts, not ES modules.
     await import("../browser-extension/src/background");
     if (!handleMessage) throw new Error("Service Workerのmessage listenerを初期化できませんでした");
+  });
 
-    const response = await new Promise<unknown>((resolve) => {
-      handleMessage?.(
-        {
-          type: "EXTRACT_MESSAGE",
-          payload: {
-            sourceSite: "RECRUIT_AGENT",
-            sourceUrl: "https://pdt.r-agent.com/pdt/app/messages"
-          }
-        },
-        { url: "https://pdt.r-agent.com/pdt/app/messages" },
-        resolve
-      );
-    });
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, "chrome");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it("does not send a Bearer request when legacy HTTP settings remain in storage", async () => {
+    settings.apiBaseUrl = "http://legacy.invalid";
+
+    const response = await sendMessage(
+      {
+        type: "EXTRACT_MESSAGE",
+        payload: {
+          sourceSite: "RECRUIT_AGENT",
+          sourceUrl: "https://pdt.r-agent.com/pdt/app/messages"
+        }
+      },
+      "https://pdt.r-agent.com/pdt/app/messages"
+    );
 
     expect(response).toEqual({
       ok: false,
@@ -90,4 +94,52 @@ describe("browser extension service worker connection boundary", () => {
     });
     expect(fetchApi).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["LOOKUP_CAPTURE", "www.r-agent.com", "www.r-agent.com", true],
+    ["LOOKUP_CAPTURE", "www.r-agent.com", "pdt.r-agent.com", false],
+    ["LOOKUP_CAPTURE", "pdt.r-agent.com", "www.r-agent.com", false],
+    ["LOOKUP_CAPTURE", "pdt.r-agent.com", "pdt.r-agent.com", false],
+    ["SAVE_CAPTURE", "www.r-agent.com", "www.r-agent.com", true],
+    ["SAVE_CAPTURE", "www.r-agent.com", "pdt.r-agent.com", false],
+    ["SAVE_CAPTURE", "pdt.r-agent.com", "www.r-agent.com", false],
+    ["SAVE_CAPTURE", "pdt.r-agent.com", "pdt.r-agent.com", false],
+    ["EXTRACT_MESSAGE", "pdt.r-agent.com", "pdt.r-agent.com", true],
+    ["REGISTER_MESSAGE_EVENT", "pdt.r-agent.com", "pdt.r-agent.com", true]
+  ] as const)(
+    "%s validates sender %s and payload %s as allowed=%s",
+    async (operation, senderHost, payloadHost, allowed) => {
+      const response = await sendMessage(
+        {
+          type: operation,
+          idempotencyKey: "test-idempotency-key",
+          payload: {
+            sourceSite: "RECRUIT_AGENT",
+            sourceUrl: `https://${payloadHost}/test`
+          }
+        },
+        `https://${senderHost}/test`
+      );
+
+      if (allowed) {
+        expect(response).toEqual({ ok: true });
+        expect(fetchApi).toHaveBeenCalledTimes(1);
+        return;
+      }
+
+      expect(response).toEqual({
+        ok: false,
+        code: "UNTRUSTED_SENDER",
+        message: "許可されていないページです"
+      });
+      expect(fetchApi).not.toHaveBeenCalled();
+    }
+  );
+
+  function sendMessage(message: unknown, senderUrl: string) {
+    if (!handleMessage) throw new Error("Service Workerのmessage listenerを初期化できませんでした");
+    return new Promise<unknown>((resolve) => {
+      handleMessage?.(message, { url: senderUrl }, resolve);
+    });
+  }
 });
