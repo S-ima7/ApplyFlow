@@ -206,7 +206,9 @@ Chrome公式仕様に従い、`chrome.permissions.request()`は設定保存と�
 | doda | pathに`JobSearchDetail`または`j_jid__...` | `j_jid__...`または`jid` query |
 | リクルートエージェント | `www.r-agent.com/viewjob/{slug}` | `/viewjob/`直後のslug |
 
-URL一致に加え、`JobPosting` JSON-LDまたは可視の求人タイトルが存在することを確認する。求人詳細は求人保存モード、それ以外の対応媒体ページはメッセージ抽出モードにする。リクルートエージェントでは公開求人とPersonal Desktopを同じ`RECRUIT_AGENT`媒体として扱う。メッセージ画面をURLパターン限定にしないことで、媒体側のURL変更に耐える。メッセージモードはページ本文を自動取得せず、ユーザーが選択または貼付した本文だけを処理する。MutationObserver、`popstate`、`hashchange`、URL変化監視でSPA遷移後に再判定し、同じroot IDのUIを重複挿入しない。
+URL一致に加え、`JobPosting` JSON-LDまたは可視の求人タイトルが存在することを確認する。求人詳細は求人保存モード、それ以外の対応媒体ページはメッセージ抽出モードにする。リクルートエージェントでは公開求人と現行Personal Desktopの`mypage.r-agent.com`を同じ`RECRUIT_AGENT`媒体として扱う。メッセージ画面をURLパターン限定にしないことで、媒体側のURL変更に耐える。メッセージモードはページ本文を自動取得せず、ユーザーが選択または貼付した本文だけを処理する。MutationObserver、`popstate`、`hashchange`、URL変化監視でSPA遷移後に再判定し、同じroot IDのUIを重複挿入しない。
+
+Recruit Agentで面接詳細モーダルが開いている間は、同じ拡張UI hostを可視の`dialog[open]`または`[role="dialog"][aria-modal="true"]`内へ移し、ネイティブdialogのtop layerやページ側backdropによる背面化を避ける。モーダルを閉じたらhostを`documentElement`へ戻し、入力と抽出結果を保持する。選択範囲はtop documentを優先し、空の場合だけ同一origin iframeの選択を確認する。cross-origin iframeは読み取らず、ポップアップ本文の自動取得も行わない。
 
 ### 8.2 抽出優先順位
 
@@ -464,6 +466,8 @@ unique制約は`(userId, idempotencyKey)`と`(userId, applicationId, messageDige
 - 対象Interview必須、message digest安定性、生本文非保持
 - Green非求人ページのメッセージモード起動
 - Personal Desktopのメッセージモード起動
+- `mypage.r-agent.com`の通常画面と面接詳細モーダルでの選択取り込み
+- Recruit Agentメッセージ操作のChrome sender origin検証
 - HTTP ApplyFlow URLの保存・Bearer送信拒否
 
 合成した架空DOMだけをテストへコミットし、実求人ページHTMLは使用しない。

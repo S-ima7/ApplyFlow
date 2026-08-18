@@ -12,6 +12,7 @@
   let previouslyFocused: HTMLElement | null = null;
   let suspendedDrawerFocus: HTMLElement | null = null;
   let navigationTimer: number | undefined;
+  let currentHost: HTMLElement | null = null;
 
   function evaluatePage() {
     lastUrl = location.href;
@@ -19,15 +20,23 @@
     const jobSite = extractionApi?.detectPage(document, url);
     const site = jobSite ?? detectSupportedSite(url);
     const mode = jobSite ? "capture" : "message";
-    const existing = document.getElementById(rootId);
+    let existing = document.getElementById(rootId) ?? currentHost;
     if (!site) {
       existing?.remove();
+      currentHost = null;
       return;
     }
     if (existing && (existing.dataset.site !== site || existing.dataset.mode !== mode)) {
       existing.remove();
+      existing = null;
+      currentHost = null;
     }
-    if (!document.getElementById(rootId)) mountUi(site, mode);
+    if (!existing) {
+      mountUi(site, mode);
+      return;
+    }
+    currentHost = existing;
+    placeUiHost(existing, site);
   }
 
   function mountUi(site: ApplyFlowSourceSite, mode: "capture" | "message") {
@@ -35,6 +44,7 @@
     host.id = rootId;
     host.dataset.site = site;
     host.dataset.mode = mode;
+    currentHost = host;
     const shadow = host.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
     style.textContent = uiStyles;
@@ -51,7 +61,7 @@
     floatingButton.setAttribute("aria-expanded", "false");
     if (mode === "message") {
       floatingButton.addEventListener("pointerdown", () => {
-        lastSelectedText = window.getSelection()?.toString().trim() ?? "";
+        lastSelectedText = readCurrentSelection();
       });
     }
     shadow.append(floatingButton);
@@ -73,7 +83,27 @@
       floatingButton.addEventListener("click", () => openMessageDrawer(overlay, floatingButton, site));
       wireMessageDrawer(overlay, floatingButton, site);
     }
-    document.documentElement.append(host);
+    placeUiHost(host, site);
+  }
+
+  function placeUiHost(host: HTMLElement, site: ApplyFlowSourceSite) {
+    const target = site === "RECRUIT_AGENT" ? findActiveModal() : null;
+    const parent = target ?? document.documentElement;
+    if (host.parentElement !== parent) parent.append(host);
+  }
+
+  function findActiveModal() {
+    const candidates = document.querySelectorAll<HTMLElement>(
+      "dialog[open], [role='dialog'][aria-modal='true']"
+    );
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const candidate = candidates[index];
+      if (candidate.hidden || candidate.getAttribute("aria-hidden") === "true") continue;
+      const style = getComputedStyle(candidate);
+      if (style.display === "none" || style.visibility === "hidden") continue;
+      return candidate;
+    }
+    return null;
   }
 
   function wireCommonDrawer(
@@ -229,7 +259,7 @@
       return;
     }
     currentMessage = null;
-    const selectedText = lastSelectedText || window.getSelection()?.toString().trim() || "";
+    const selectedText = lastSelectedText || readCurrentSelection();
     setInputValue(overlay, "#af-selected-message", selectedText);
     setText(overlay, "#af-source", `${sourceLabel(site)} / 選択範囲のみを処理します`);
     setMessage(
@@ -287,7 +317,7 @@
     });
     const useSelectionButton = overlay.querySelector<HTMLButtonElement>("#af-use-selection");
     useSelectionButton?.addEventListener("pointerdown", () => {
-      lastSelectedText = window.getSelection()?.toString().trim() ?? "";
+      lastSelectedText = readCurrentSelection();
     });
     useSelectionButton?.addEventListener("click", () => {
       if (!lastSelectedText) {
@@ -297,6 +327,21 @@
       setInputValue(overlay, "#af-selected-message", lastSelectedText);
       setMessage(overlay, "現在選択しているメッセージを取り込みました。", "success");
     });
+  }
+
+  function readCurrentSelection() {
+    const selectedText = window.getSelection()?.toString().trim() ?? "";
+    if (selectedText) return selectedText;
+
+    for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe")) {
+      try {
+        const frameSelection = frame.contentWindow?.getSelection()?.toString().trim() ?? "";
+        if (frameSelection) return frameSelection;
+      } catch {
+        // Cross-origin frames are intentionally skipped because Chrome blocks their document access.
+      }
+    }
+    return "";
   }
 
   async function extractSelectedMessage(overlay: HTMLElement, site: ApplyFlowSourceSite) {
@@ -880,7 +925,7 @@
   const messageDrawerMarkup = `
     <section class="af-drawer" role="dialog" aria-modal="false" aria-labelledby="af-title"><header class="af-header"><div><span class="af-eyebrow">APPLYFLOW</span><h2 id="af-title">企業メッセージから面接登録</h2></div><button id="af-close" class="af-icon-button" type="button" aria-label="入力内容を保持して一時的に隠す" title="入力内容を保持して一時的に隠す">−</button></header><div class="af-body">
       <p id="af-message" class="af-message" data-tone="info" role="status"></p><button id="af-options" class="af-secondary" type="button" hidden>拡張機能の設定を開く</button><p id="af-source" class="af-source"></p>
-      <section id="af-message-extract-section"><form id="af-message-extract-form"><div class="af-selection-tools"><p>パネルを開いたまま、左側のメッセージを確認・選択できます。</p><button id="af-use-selection" class="af-secondary" type="button">現在の選択を取り込む</button></div><label>抽出する企業メッセージ <span>*</span><textarea id="af-selected-message" rows="10" maxlength="12000" required></textarea></label><label class="af-check"><input id="af-ai-consent" type="checkbox" required /><span>選択した本文と日時解釈に必要な媒体識別子・取得日時・設定タイムゾーンを、ApplyFlowからCloudflare Workers AI上の@cf/openai/gpt-oss-120bへ送信することに同意します。</span></label><p class="af-privacy">媒体画面から送信する本文は上の選択内容だけです。ページタイトルや未選択本文は送信せず、本文はCloudflareの保存サービスやApplyFlowのデータベースへ保存しません。</p><div class="af-actions"><button class="af-secondary af-close-drawer" type="button">一時的に隠す</button><button id="af-extract-message" class="af-primary" type="submit">日時を抽出</button></div></form></section>
+      <section id="af-message-extract-section"><form id="af-message-extract-form"><div class="af-selection-tools"><p>媒体画面や面接詳細ポップアップを確認・選択できます。</p><button id="af-use-selection" class="af-secondary" type="button">現在の選択を取り込む</button></div><label>抽出する企業メッセージ <span>*</span><textarea id="af-selected-message" rows="10" maxlength="12000" required></textarea></label><label class="af-check"><input id="af-ai-consent" type="checkbox" required /><span>選択した本文と日時解釈に必要な媒体識別子・取得日時・設定タイムゾーンを、ApplyFlowからCloudflare Workers AI上の@cf/openai/gpt-oss-120bへ送信することに同意します。</span></label><p class="af-privacy">媒体画面から送信する本文は上の選択内容だけです。ページタイトルや未選択本文は送信せず、本文はCloudflareの保存サービスやApplyFlowのデータベースへ保存しません。</p><div class="af-actions"><button class="af-secondary af-close-drawer" type="button">一時的に隠す</button><button id="af-extract-message" class="af-primary" type="submit">日時を抽出</button></div></form></section>
       <section id="af-message-review-section" hidden><p id="af-extraction-summary" class="af-review-summary"></p><form id="af-message-register-form"><section class="af-destination-section"><h3>応募先</h3><div class="af-grid"><label>抽出した会社名 <span>*</span><input id="af-extracted-company" maxlength="100" required /></label><label>抽出したポジション <span>*</span><input id="af-extracted-position" maxlength="100" required /></label></div><label>登録方法 <span>*</span><select id="af-message-application" required></select></label><p id="af-destination-hint" class="af-destination-hint"></p><label id="af-company-resolution-row">企業の扱い <span>*</span><select id="af-company-resolution"></select></label><label id="af-new-application-type-row">新しい応募先の種別<select id="af-new-application-type"><option value="CAREER_CHANGE">転職</option><option value="JOB_HUNTING">就活</option><option value="INTERNSHIP">インターン</option><option value="FREELANCE">業務委託</option><option value="PART_TIME">アルバイト</option><option value="GRADUATE_SCHOOL">大学院</option><option value="OTHER">その他</option></select></label></section><label>メッセージの内容<select id="af-event-type"><option value="CREATE_OR_UPDATE">新規・更新</option><option value="RESCHEDULE">日時変更</option><option value="CANCEL">取消</option></select></label><label>対象の面接<select id="af-target-interview"></select></label><p id="af-target-hint" class="af-help"></p><div class="af-grid"><label>選考種別<select id="af-stage-type"><option value="CASUAL_MEETING">カジュアル面談</option><option value="FIRST_INTERVIEW">一次面接</option><option value="SECOND_INTERVIEW">二次面接</option><option value="FINAL_INTERVIEW">最終面接</option><option value="OFFER_MEETING">オファー面談</option><option value="CONDITION_MEETING">条件面談</option><option value="DOCUMENT_SCREENING">書類選考</option><option value="ASSIGNMENT">課題</option><option value="OTHER">その他</option></select></label><label>表示名<input id="af-stage-name" maxlength="100" /></label></div>
         <section id="af-schedule-fields" class="af-schedule-fields"><h3>確定日時</h3><div class="af-grid"><label>開始<input id="af-confirmed-start" type="datetime-local" /></label><label>終了<input id="af-confirmed-end" type="datetime-local" /></label></div><div class="af-section-heading"><h3>候補日時</h3><button id="af-add-proposed-slot" class="af-text-button" type="button">候補を追加</button></div><p id="af-no-proposed-slots" class="af-help">候補日時は抽出されませんでした。</p><div id="af-proposed-slots"></div><label>面接URL<input id="af-meeting-url" type="url" maxlength="2000" /></label><label>担当者名<input id="af-interviewer-name" maxlength="200" /></label></section>
         <label id="af-replace-row" class="af-check"><input id="af-replace-schedule" type="checkbox" checked /><span>対象面接の現在の確定・候補日時を置き換える</span></label><p class="af-privacy">登録前に応募先・対象面接・日時を確認してください。終了時刻がない場合は60分として抽出されます。</p><div class="af-actions af-actions-between"><button id="af-back-to-message" class="af-secondary" type="button">本文へ戻る</button><button id="af-register-message" class="af-primary" type="submit">確認内容を登録</button></div></form></section>
@@ -897,8 +942,19 @@
   new MutationObserver(() => {
     window.clearTimeout(navigationTimer);
     navigationTimer = window.setTimeout(evaluatePage, 250);
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  }).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["open", "aria-modal", "aria-hidden", "hidden"]
+  });
   window.setInterval(() => {
-    if (lastUrl !== location.href) evaluatePage();
+    if (lastUrl !== location.href) {
+      evaluatePage();
+      return;
+    }
+    if (currentHost?.dataset.site === "RECRUIT_AGENT") {
+      placeUiHost(currentHost, "RECRUIT_AGENT");
+    }
   }, 1_000);
 })();
