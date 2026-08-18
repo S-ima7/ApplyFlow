@@ -108,7 +108,6 @@ export function buildBrowserMessagePrompt(
     `Current reference datetime: ${referenceNow.toISOString()}`,
     `Message captured datetime: ${input.capturedAt}`,
     `Source site: ${input.sourceSite}`,
-    `Page title: ${input.pageTitle ?? ""}`,
     "",
     "User-selected company message:",
     input.selectedText

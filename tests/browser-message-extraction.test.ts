@@ -48,7 +48,7 @@ describe("browser message extraction", () => {
         sourceSite: "GREEN",
         sourceUrl: "https://www.green-japan.com/messages/123",
         selectedText: "選択したメッセージ本文",
-        pageTitle: "メッセージ",
+        pageTitle: "未同意のページタイトル",
         capturedAt: "2026-07-15T12:00:00+09:00",
         consentToAiProcessing: true
       },
@@ -58,5 +58,7 @@ describe("browser message extraction", () => {
     expect(prompt).toContain("選択したメッセージ本文");
     expect(prompt).toContain("Asia/Tokyo");
     expect(prompt).not.toContain("https://www.green-japan.com/messages/123");
+    expect(prompt).not.toContain("未同意のページタイトル");
+    expect(prompt).not.toContain("Page title:");
   });
 });

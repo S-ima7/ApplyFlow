@@ -1,15 +1,11 @@
 {
   "manifest_version": 3,
   "name": "ApplyFlow 求人・面接登録",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "求人の保存と、選択した企業メッセージからの面接日時確認登録を行います。",
   "minimum_chrome_version": "102",
   "permissions": ["storage", "scripting", "activeTab"],
-  "optional_host_permissions": [
-    "https://*/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*"
-  ],
+  "optional_host_permissions": ["https://*/*"],
   "background": {
     "service_worker": "background.js"
   },

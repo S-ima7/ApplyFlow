@@ -1,12 +1,12 @@
-# ApplyFlow ブラウザ拡張機能設計書 v2.5
+# ApplyFlow ブラウザ拡張機能設計書 v3.0
 
-更新日: 2026-07-15  
-対象実装: ApplyFlow v0.1.0 / Chrome拡張 v0.2.0 / Manifest V3  
+更新日: 2026-08-18
+対象実装: ApplyFlow v0.1.0 / Chrome拡張 v0.3.0 / Manifest V3
 ステータス: MVP実装済み
 
 ## 1. 目的
 
-本拡張機能は、本人がGreenまたはdodaを閲覧しているとき、求人詳細から応募先を保存し、企業メッセージの選択範囲から面接日時・候補日時・日時変更・取消を抽出して、本人の確認後に既存応募先へ反映する。
+本拡張機能は、本人がGreen、dodaまたはリクルートエージェントを閲覧しているとき、求人詳細から応募先を保存し、企業メッセージの選択範囲から面接日時・候補日時・日時変更・取消を抽出して、本人の確認後に既存応募先へ反映する。
 
 ApplyFlow本体の目的である「応募先、選考フェーズ、面談候補、返信待ち、期限の一元管理」への入口を短縮する機能であり、求人情報の収集・再配布や応募操作の自動化は目的としない。
 
@@ -16,22 +16,22 @@ ApplyFlow本体の目的である「応募先、選考フェーズ、面談候�
 
 - 利用者は本人1名である。
 - Chrome Web Storeでは配布せず、ソースからビルドして開発者モードで読み込む。
-- ApplyFlowはローカル環境、または本人管理下のHTTPS環境で稼働する。
-- Green、dodaおよび各運営会社とは無関係の非公式ツールである。
+- ApplyFlowはNetlify / Neon上の本人管理下のHTTPS環境で稼働する。
+- Green、doda、リクルートエージェントおよび各運営会社とは無関係の非公式ツールである。
 - ソースコードは公開可能だが、トークン、実求人データ、Cookie、DBダンプは公開しない。
 
 ### 2.2 MVPで実装すること
 
-- Green・doda求人詳細ページの判定
+- Green・doda・リクルートエージェント求人詳細ページの判定
 - 媒体単位の任意ホスト権限と有効・無効設定
 - ページ右下の「ApplyFlowに保存」ボタン
 - JSON-LD、可視DOM、公開メタデータ、URLからの候補抽出
 - Shadow DOM内の確認・編集ドロワー
 - 保存済み照合、新規保存、ApplyFlow詳細画面への遷移
-- トークン発行・失効、ローカル設定削除
+- トークン発行・失効、拡張機能設定削除
 - URL正規化、重複防止、Idempotency-Key
 - 合成DOMを使ったアダプターテスト
-- 両媒体の非求人ページに表示する「面接日時を抽出」ボタン
+- 各媒体の非求人ページに表示する「面接日時を抽出」ボタン
 - ユーザーが選択・貼付したメッセージ本文だけを対象とするAI抽出
 - 応募先・対象面接・抽出日時・処理種別の登録前確認
 - 確定日時、候補日時、日時変更、取消の既存Applicationへの反映
@@ -68,7 +68,7 @@ API障害時は入力を自動保存しない。ユーザーが画面を開い�
 | `status` | `DRAFT`固定 |
 | `priority` | `MEDIUM`固定 |
 | `sourceUrl` | 正規化済み求人URL |
-| `sourceSite` | `GREEN`または`DODA` |
+| `sourceSite` | `GREEN`、`DODA`または`RECRUIT_AGENT` |
 | `sourceJobId` | 公開URLから取得できた場合のみ |
 | `locationText` | 原文の勤務地候補 |
 | `employmentTypeText` | 原文の雇用形態候補 |
@@ -86,11 +86,12 @@ API障害時は入力を自動保存しない。ユーザーが画面を開い�
 | 論点 | 採用 | 理由 |
 |---|---|---|
 | 認証 | 専用Bearer Token | 既存Auth.jsのDBセッションCookieを拡張機能へ流用せず、個別に失効できる |
-| Token受け渡し | Web設定画面で発行し、拡張設定へ1回貼付 | OAuth認可サーバーを新設せず、本人1名のローカル利用に必要十分 |
+| Token受け渡し | Web設定画面で発行し、拡張設定へ1回貼付 | OAuth認可サーバーを新設せず、本人1名の利用に必要十分 |
 | Token保存 | サーバーはSHA-256 digest、Chromeは`storage.local` | DB漏えい時に平文Tokenを残さず、再表示しない |
 | Content ScriptからのToken参照 | 禁止 | `storage.local.setAccessLevel(TRUSTED_CONTEXTS)`でService Workerと拡張ページに限定 |
 | UI | TypeScript + DOM + Shadow DOM | React/Viteを追加せず、既存TypeScriptだけで小さいMV3成果物を作る |
 | 権限 | `optional_host_permissions` + 動的登録 | 有効にした媒体とApplyFlow originだけを実行時に許可する |
+| ApplyFlow接続先 | HTTPSのみ | Bearer Tokenを平文HTTPへ送信せず、本番Web/PWAの正本と揃える |
 | 保存済み照合 | 保存ボタン押下後 | ページを開いただけで閲覧情報を送信しない |
 | 重複単位 | `userId + sourceKey`、正規化`sourceUrl` | 媒体求人ID、なければ正規化URLをSHA-256で安定キー化し、Web画面から同じURLを登録済みの場合も検出する |
 | 冪等単位 | `userId + captureIdempotencyKey` | 二重クリックや同一リクエスト再送で新規作成しない |
@@ -110,7 +111,7 @@ API障害時は入力を自動保存しない。ユーザーが画面を開い�
 
 ```mermaid
 flowchart LR
-    U[利用者] --> P[Green / doda 求人・メッセージ画面]
+    U[利用者] --> P[Green / doda / Recruit Agent 求人・メッセージ画面]
     P --> CS[Content Script]
     CS --> SD[Shadow DOM 確認UI]
     SD -->|抽出候補・操作| SW[MV3 Service Worker]
@@ -181,13 +182,14 @@ features/browser-extension/
 
 ### 7.2 任意ホスト権限
 
-`manifest.json`は動的な自己ホスト先に対応するため、`https://*/*`、`http://localhost/*`、`http://127.0.0.1/*`を任意権限として宣言する。実際の要求は設定保存時に次の具体的originへ限定する。
+`manifest.json`は動的な自己ホスト先に対応するため、`https://*/*`だけを任意権限として宣言する。実際の要求は設定保存時に次の具体的originへ限定する。
 
 - `https://*.green-japan.com/*`
 - `https://*.doda.jp/*`
+- `https://*.r-agent.com/*`
 - 入力されたApplyFlowのorigin
 
-外部ApplyFlowはHTTPSのみ許可し、HTTPは`localhost`と`127.0.0.1`だけ許可する。`cookies`、`history`、`tabs`、`webRequest`権限は要求しない。`activeTab`はユーザーが拡張アイコンを開いた現在タブにだけ一時アクセスする。
+ApplyFlow接続先はHTTPSのみ許可する。旧版のChrome storageにHTTP URLが残っていても未設定として扱い、Bearer Tokenを送信しない。`cookies`、`history`、`tabs`、`webRequest`権限は要求しない。`activeTab`はユーザーが拡張アイコンを開いた現在タブにだけ一時アクセスする。
 
 Chrome公式仕様に従い、`chrome.permissions.request()`は設定保存というユーザージェスチャー内で実行する。許可済み媒体だけ`chrome.scripting.registerContentScripts()`で永続登録する。最低Chromeバージョンは、Storage access levelを利用できる102とする。
 
@@ -201,8 +203,9 @@ Chrome公式仕様に従い、`chrome.permissions.request()`は設定保存と�
 |---|---|---|
 | Green | `/company/{number}/job/{number}` | `/job/`直後の数値 |
 | doda | pathに`JobSearchDetail`または`j_jid__...` | `j_jid__...`または`jid` query |
+| リクルートエージェント | `www.r-agent.com/viewjob/{slug}` | `/viewjob/`直後のslug |
 
-URL一致に加え、`JobPosting` JSON-LDまたは可視の求人タイトルが存在することを確認する。求人詳細は求人保存モード、それ以外のGreen・dodaページはメッセージ抽出モードにする。後者をURLパターン限定にしないことで、媒体側のメッセージURL変更に耐える。メッセージモードはページ本文を自動取得せず、ユーザーが選択または貼付した本文だけを処理する。MutationObserver、`popstate`、`hashchange`、URL変化監視でSPA遷移後に再判定し、同じroot IDのUIを重複挿入しない。
+URL一致に加え、`JobPosting` JSON-LDまたは可視の求人タイトルが存在することを確認する。求人詳細は求人保存モード、それ以外の対応媒体ページはメッセージ抽出モードにする。リクルートエージェントでは公開求人とPersonal Desktopを同じ`RECRUIT_AGENT`媒体として扱う。メッセージ画面をURLパターン限定にしないことで、媒体側のURL変更に耐える。メッセージモードはページ本文を自動取得せず、ユーザーが選択または貼付した本文だけを処理する。MutationObserver、`popstate`、`hashchange`、URL変化監視でSPA遷移後に再判定し、同じroot IDのUIを重複挿入しない。
 
 ### 8.2 抽出優先順位
 
@@ -292,6 +295,13 @@ Content ScriptへTokenを返すメッセージは実装しない。`GET_SETTINGS
 - CORS: Bearer認証のためcredentialsを使用せず、`POST / OPTIONS`だけ許可
 - Response: `Cache-Control: no-store`
 
+`sourceSite`は次の互換追加とする。DB列は既存の`String`を使用するためmigrationは不要で、既存の`GREEN` / `DODA`レコードは変更しない。
+
+```text
+before: "GREEN" | "DODA"
+after:  "GREEN" | "DODA" | "RECRUIT_AGENT"
+```
+
 ### 11.1 保存済み照合
 
 `POST /api/browser-extension/lookup`
@@ -337,7 +347,7 @@ Headerに16〜100文字の`Idempotency-Key`を必須とする。bodyは以下を
 
 `POST /api/browser-extension/message-extractions`
 
-bodyは媒体、現在URL、選択本文、ページタイトル、取得時刻、`consentToAiProcessing: true`を受け付ける。サーバーはToken所有者のtimezoneを使い、Cloudflare Workers AI REST APIへstrict JSON Schemaを要求し、返却JSONをZodで再検証して次を返す。Schema不一致時は登録しない。
+bodyは媒体、現在URL、選択本文、取得時刻、`consentToAiProcessing: true`を受け付ける。ページタイトルや未選択本文は受け付けてもAI promptへ含めない。サーバーはToken所有者のtimezoneを使い、Cloudflare Workers AI REST APIへstrict JSON Schemaを要求し、返却JSONをZodで再検証して次を返す。Schema不一致時は登録しない。
 
 - `eventType`: `CREATE_OR_UPDATE` / `RESCHEDULE` / `CANCEL`
 - 会社名、ポジション、選考種別、選考名
@@ -396,7 +406,7 @@ unique制約は`(userId, sourceKey)`と`(userId, captureIdempotencyKey)`であ�
 | 項目 | 用途 |
 |---|---|
 | `userId` / `applicationId` / `interviewId` | 所有者と反映先 |
-| `sourceSite` | `GREEN`または`DODA` |
+| `sourceSite` | `GREEN`、`DODA`または`RECRUIT_AGENT` |
 | `eventType` | 新規・更新、日時変更、取消 |
 | `messageDigest` | trim済み選択本文のSHA-256。本文自体は保持しない |
 | `idempotencyKey` | 二重クリック・再送防止 |
@@ -441,6 +451,7 @@ unique制約は`(userId, idempotencyKey)`と`(userId, applicationId, messageDige
 
 - Green JSON-LD抽出とtracking parameter除去
 - doda可視DOMフォールバック
+- リクルートエージェント公開求人の可視DOM抽出と求人ID取得
 - Green一覧ページの除外
 - URL正規化とsourceKey安定性
 - 媒体・host不一致の拒否
@@ -451,6 +462,8 @@ unique制約は`(userId, idempotencyKey)`と`(userId, applicationId, messageDige
 - 確定・候補・取消の状態遷移
 - 対象Interview必須、message digest安定性、生本文非保持
 - Green非求人ページのメッセージモード起動
+- Personal Desktopのメッセージモード起動
+- HTTP ApplyFlow URLの保存・Bearer送信拒否
 
 合成した架空DOMだけをテストへコミットし、実求人ページHTMLは使用しない。
 
@@ -467,13 +480,13 @@ npm run build
 
 ## 16. 導入・運用
 
-1. `npm install`、DB起動、環境変数設定を行う。
-2. `npm run prisma:migrate`で`20260715120000_add_browser_extension`と`20260715140000_add_browser_message_import`を適用する。
+1. Netlify / Neonの本番環境変数とDB migration適用状態を確認する。
+2. PC版ChromeでApplyFlowの本番HTTPS URLへログインする。
 3. `npm run extension:build`を実行する。
 4. `chrome://extensions`のデベロッパーモードで`browser-extension/dist`を読み込む。
 5. ApplyFlowへGoogleログインし、`/settings`で拡張Tokenを発行する。
 6. 対象媒体ページで拡張アイコンを開き、「このページで有効化」を押してChromeの権限を許可する。
-7. 保存機能を使う場合は、拡張機能の詳細設定へApplyFlow URLとTokenを入力する。
+7. 保存機能を使う場合は、拡張機能の詳細設定へApplyFlowの本番HTTPS URLとTokenを入力する。
 8. ボタンが見つからない場合はポップアップの診断結果を確認し、「現在ページへボタンを再挿入」を押す。
 
 障害時は拡張設定で該当媒体を無効化する。Token漏えいが疑われる場合はApplyFlow設定画面ですぐ失効し、再発行する。
@@ -481,7 +494,8 @@ npm run build
 ## 17. 受け入れ基準
 
 - ページ表示だけではApplyFlowへ通信しない。
-- Green・dodaの求人詳細には求人保存ボタン、それ以外の媒体ページには面接日時抽出ボタンを表示する。
+- Green・doda・リクルートエージェントの求人詳細には求人保存ボタン、それ以外の媒体ページには面接日時抽出ボタンを表示する。
+- HTTPS以外のApplyFlow URLは保存せず、Bearer Tokenを送信しない。
 - 会社名、ポジション、勤務地、雇用形態、給与・報酬、応募種別、メモを保存前に確認・編集できる。
 - 必須抽出失敗時も手入力で保存できる。
 - 同じ求人または同じIdempotency-KeyでApplicationを重複作成しない。
@@ -504,7 +518,7 @@ npm run build
 
 - 媒体DOMは変更され得る。JSON-LDを優先するが、可視DOM fallbackは実ページで継続確認する。
 - リポジトリには実求人HTMLを置かないため、実媒体での最終スモークテストは自動化しない。
-- doda/GreenのURL形式が追加された場合は、対象を広げる前に一覧ページ誤検知がないことをテストする。
+- 対象媒体のURL形式が追加された場合は、対象を広げる前に一覧ページ誤検知がないことをテストする。
 - Chromeの権限画面で利用者が後からsite accessを変更した場合、設定保存または拡張再起動時に登録状態を再同期する。
 - `lastUsedAt`はAPI呼び出しごとに更新するため、高頻度利用時は追加DB writeが発生する。個人利用MVPでは許容する。
 - Tokenに既定有効期限はない。利用終了時の明示失効を運用条件とする。
@@ -545,3 +559,4 @@ npm run build
 | 2.3 | 2026-07-15 | メッセージから応募先も抽出し、完全一致の自動統合、表記ゆれ確認、未登録応募先の同時作成を追加 |
 | 2.4 | 2026-07-15 | 変更・取消の対象となる進行中面接がない場合、選択不能な必須欄を出さず新規登録へ自動補正するUXを追加 |
 | 2.5 | 2026-07-15 | メッセージ送信欄を避ける起動ボタン配置と、入力・抽出結果を保持したパネルの一時退避・再開を追加 |
+| 3.0 | 2026-08-18 | ApplyFlow接続先を本番HTTPSへ限定し、リクルートエージェントの公開求人とPersonal Desktopを対象へ追加 |

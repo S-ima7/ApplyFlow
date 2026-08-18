@@ -2,19 +2,22 @@
   const settingsKey = "settings";
   const scriptIds: Record<ApplyFlowSourceSite, string> = {
     GREEN: "applyflow-green",
-    DODA: "applyflow-doda"
+    DODA: "applyflow-doda",
+    RECRUIT_AGENT: "applyflow-recruit-agent"
   };
   const sitePatterns: Record<ApplyFlowSourceSite, string> = {
     GREEN: "https://*.green-japan.com/*",
-    DODA: "https://*.doda.jp/*"
+    DODA: "https://*.doda.jp/*",
+    RECRUIT_AGENT: "https://*.r-agent.com/*"
   };
   const defaultSettings: ApplyFlowExtensionSettings = {
-    apiBaseUrl: "http://localhost:3000",
+    apiBaseUrl: "",
     apiToken: "",
     defaultApplicationType: "CAREER_CHANGE",
     adapters: {
       GREEN: false,
-      DODA: false
+      DODA: false,
+      RECRUIT_AGENT: false
     }
   };
   let registrationSync = Promise.resolve();
@@ -50,15 +53,17 @@
     const value = stored[settingsKey];
     if (!isRecord(value)) return defaultSettings;
     const adapters = isRecord(value.adapters) ? value.adapters : {};
+    const apiBaseUrl = typeof value.apiBaseUrl === "string" ? parseApiBaseUrl(value.apiBaseUrl) : null;
     return {
-      apiBaseUrl: typeof value.apiBaseUrl === "string" ? value.apiBaseUrl : defaultSettings.apiBaseUrl,
+      apiBaseUrl: apiBaseUrl ?? defaultSettings.apiBaseUrl,
       apiToken: typeof value.apiToken === "string" ? value.apiToken : "",
       defaultApplicationType: isApplicationType(value.defaultApplicationType)
         ? value.defaultApplicationType
         : defaultSettings.defaultApplicationType,
       adapters: {
         GREEN: adapters.GREEN === true,
-        DODA: adapters.DODA === true
+        DODA: adapters.DODA === true,
+        RECRUIT_AGENT: adapters.RECRUIT_AGENT === true
       }
     };
   }
@@ -73,7 +78,7 @@
     }
 
     const scripts: ApplyFlowRegisteredContentScript[] = [];
-    for (const site of ["GREEN", "DODA"] as const) {
+    for (const site of ["GREEN", "DODA", "RECRUIT_AGENT"] as const) {
       if (!settings.adapters[site]) continue;
       const matches = [sitePatterns[site]];
       if (!(await chrome.permissions.contains({ origins: matches }))) continue;
@@ -126,8 +131,11 @@
       if (typeof message.applicationUrl !== "string") {
         return { ok: false, code: "INVALID_URL", message: "URLが不正です" };
       }
+      const apiOrigin = parseApiBaseUrl(settings.apiBaseUrl);
+      if (!apiOrigin) {
+        return { ok: false, code: "INVALID_API_URL", message: "ApplyFlow URLにはHTTPS URLを設定してください" };
+      }
       const target = new URL(message.applicationUrl);
-      const apiOrigin = new URL(settings.apiBaseUrl).origin;
       if (target.origin !== apiOrigin || !target.pathname.startsWith("/applications/")) {
         return { ok: false, code: "INVALID_URL", message: "URLが許可されていません" };
       }
@@ -192,7 +200,7 @@
   ) {
     const baseUrl = parseApiBaseUrl(settings.apiBaseUrl);
     if (!baseUrl) {
-      return { ok: false, code: "INVALID_API_URL", message: "ApplyFlow URLが不正です" };
+      return { ok: false, code: "INVALID_API_URL", message: "ApplyFlow URLにはHTTPS URLを設定してください" };
     }
 
     const headers: Record<string, string> = {
@@ -224,7 +232,12 @@
     sender: ApplyFlowChromeMessageSender,
     payload: Record<string, unknown>
   ) {
-    if ((payload.sourceSite !== "GREEN" && payload.sourceSite !== "DODA") || typeof payload.sourceUrl !== "string") {
+    if (
+      (payload.sourceSite !== "GREEN" &&
+        payload.sourceSite !== "DODA" &&
+        payload.sourceSite !== "RECRUIT_AGENT") ||
+      typeof payload.sourceUrl !== "string"
+    ) {
       return false;
     }
     const senderUrl = sender.url ?? sender.tab?.url;
@@ -234,9 +247,13 @@
       const senderHost = new URL(senderUrl).hostname.toLowerCase();
       const payloadUrl = new URL(payload.sourceUrl);
       const payloadHost = payloadUrl.hostname.toLowerCase();
-      return payload.sourceSite === "GREEN"
-        ? isHost(senderHost, "green-japan.com") && isHost(payloadHost, "green-japan.com")
-        : isHost(senderHost, "doda.jp") && isHost(payloadHost, "doda.jp");
+      const expectedHost =
+        payload.sourceSite === "GREEN"
+          ? "green-japan.com"
+          : payload.sourceSite === "DODA"
+            ? "doda.jp"
+            : "r-agent.com";
+      return isHost(senderHost, expectedHost) && isHost(payloadHost, expectedHost);
     } catch {
       return false;
     }
@@ -245,8 +262,7 @@
   function parseApiBaseUrl(value: string) {
     try {
       const url = new URL(value);
-      const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-      if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) return null;
+      if (url.protocol !== "https:") return null;
       return url.origin;
     } catch {
       return null;

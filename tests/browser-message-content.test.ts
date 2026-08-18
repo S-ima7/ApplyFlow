@@ -73,6 +73,12 @@ describe("browser extension message page startup", () => {
     expect(source).toContain("window.getSelection()?.toString().trim()");
   });
 
+  it("does not send the page title with the selected message", () => {
+    const source = readFileSync("browser-extension/src/content.ts", "utf8");
+    expect(source).not.toContain("pageTitle: document.title");
+    expect(source).toContain("ページタイトルや未選択本文は送信せず");
+  });
+
   it("offers one-step application creation and explicit variant confirmation", () => {
     const source = readFileSync("browser-extension/src/content.ts", "utf8");
     expect(source).toContain("新しい応募先を作成");

@@ -16,7 +16,7 @@
       <form id="settings-form">
         <section>
           <h2>ApplyFlow接続</h2>
-          <label>ApplyFlow URL<input id="api-base-url" type="url" required placeholder="http://localhost:3000" /></label>
+          <label>ApplyFlow URL<input id="api-base-url" type="url" required placeholder="https://your-site.netlify.app" /></label>
           <label>拡張機能トークン<input id="api-token" type="password" autocomplete="off" placeholder="af_ext_..." /></label>
           <p class="help">ApplyFlowの「設定 → ブラウザ拡張機能」で発行します。媒体ボタンの表示だけを確認する場合は空でも保存できます。</p>
           <label>既定の応募種別<select id="default-application-type">
@@ -31,10 +31,11 @@
           <p class="help">有効にした媒体だけ、Chromeがアクセス許可を確認します。</p>
           <label class="check"><input id="adapter-green" type="checkbox" /><span><strong>Green</strong><small>求人保存・面接日時抽出ボタンを表示</small></span></label>
           <label class="check"><input id="adapter-doda" type="checkbox" /><span><strong>doda</strong><small>求人保存・面接日時抽出ボタンを表示</small></span></label>
+          <label class="check"><input id="adapter-recruit-agent" type="checkbox" /><span><strong>リクルートエージェント</strong><small>求人保存・面接日時抽出ボタンを表示</small></span></label>
         </section>
         <div id="status" class="status" role="status" hidden></div>
         <div class="actions">
-          <button id="reset-settings" class="secondary" type="button">ローカル設定を削除</button>
+          <button id="reset-settings" class="secondary" type="button">拡張機能設定を削除</button>
           <button class="primary" type="submit">設定と権限を保存</button>
         </div>
       </form>
